@@ -1,18 +1,15 @@
 pub mod config;
-use config::LauncherConfig;
-use log::{debug, info};
-use std::process::Command;
+pub mod mcargument;
+pub mod runtime;
+use config::RuntimeConfig;
+use runtime::gameruntime;
+use log::error;
 
 const GAME_PATH: &str = "/home/funny/Minecraft/HMCL/.minecraft/";
 
-fn get_java_path() -> String {
-    //TODO: implement find java path then return
-    "/usr/lib/jvm/java-22-openjdk/bin/java".to_string()
-}
-
 fn main() {
     env_logger::init();
-    let config = LauncherConfig {
+    let config = RuntimeConfig {
         max_memory_size: 5000,
         window_weight: 400,
         window_height: 400,
@@ -21,10 +18,10 @@ fn main() {
         user_type: "offline".to_string(),
         game_dir: GAME_PATH.to_string(),
         game_version: "1.20.4".to_string(),
+        java_path: "/usr/lib/jvm/java-22-openjdk/bin/java".to_string(),
     };
-    debug!("{:#?}", config.args_provider());
-    if let Ok(args) = config.args_provider() {
-        let path = get_java_path();
-        let output = Command::new(path).args(args).output().unwrap();
+
+    if let Err(e) = gameruntime(config) {
+        error!("{}",e);
     }
 }
