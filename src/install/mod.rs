@@ -1,11 +1,56 @@
 use crate::config::{RuntimeConfig, VersionManifestJson, VersionType};
 use regex::Regex;
 use reqwest::header;
+use std::fs;
+use log::debug;
 
-pub fn get_version_json(
+pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
+    // install version.json then write it in version dir
+    let version_json = get_version_json(config)?;
+    let version_dir = "versions/".to_string() + config.game_version.as_ref() + "/";
+    let version_json_file = version_dir.clone() + config.game_version.as_ref() + ".json";
+    fs::create_dir_all(version_dir).unwrap_or(());
+    fs::write(
+        version_json_file,
+        serde_json::to_string_pretty(&version_json)?,
+    )?;
+
+    // install assets
+    install_assets(config, &version_json)?;
+    Ok(())
+}
+
+pub fn install_assets(
     config: &RuntimeConfig,
-    version: String,
-) -> anyhow::Result<serde_json::Value> {
+    version_json: &serde_json::Value,
+) -> anyhow::Result<()> {
+    let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
+    let asset_index = &version_json["assetIndex"];
+    let id = &asset_index["id"].as_str().unwrap().to_string();
+    let url = &asset_index["url"].as_str().unwrap().to_string();
+    let replace = regex.captures(url.as_str()).unwrap();
+    let url = url.replace(&replace["replace"], config.mirror.version_manifest.as_ref());
+    let _asset_index_sha1 = &asset_index["sha1"].to_string();
+    let asset_index_dir = "assets/indexes/".to_string();
+    let asset_index_file = asset_index_dir.clone() + id + ".json";
+
+
+    debug!("get {}",&url);
+    let client = reqwest::blocking::Client::new();
+    let data = client
+        .get(&url)
+        .header(header::USER_AGENT, "mc_launcher")
+        .send()?
+        .text()?;
+    
+    fs::create_dir_all(asset_index_dir)?;
+    fs::write(asset_index_file, data)?;
+
+    Ok(())
+}
+
+pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Value> {
+    let version = config.game_version.as_ref();
     let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
     let manifest = VersionManifestJson::new(config)?;
     let mut url = manifest
@@ -20,12 +65,12 @@ pub fn get_version_json(
     url = url.replace(&replace["replace"], config.mirror.version_manifest.as_ref());
 
     let client = reqwest::blocking::Client::new();
+    debug!("get {}",&url);
     let data = client
-        .get(url)
+        .get(&url)
         .header(header::USER_AGENT, "mc_launcher")
         .send()?
         .text()?;
-
 
     let data: serde_json::Value = serde_json::from_str(&data.as_str())?;
     Ok(data)
@@ -36,8 +81,9 @@ impl VersionManifestJson {
         let mut url = config.mirror.version_manifest.clone();
         url += "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
+        debug!("{}",&url);
         let data: VersionManifestJson = client
-            .get(url)
+            .get(&url)
             .header(header::USER_AGENT, "mc_launcher")
             .send()?
             .json()?;
@@ -96,5 +142,5 @@ fn test_get_version_json() {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
         },
     };
-    let _ = get_version_json(&config, "1.20.4".to_string()).unwrap();
+    let _ = get_version_json(&config).unwrap();
 }

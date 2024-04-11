@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use launcher::config::{MCMirror, RuntimeConfig, VersionManifestJson, VersionType};
+use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
 use log::error;
 use std::fs;
@@ -55,10 +56,8 @@ fn handle_args() -> anyhow::Result<()> {
                     version_manifest: "http://launchermeta.mojang.com/".to_string(),
                 },
             };
-            fs::create_dir("versions").unwrap_or(());
-            fs::create_dir("assets").unwrap_or(());
-            fs::create_dir("libraries").unwrap_or(());
             fs::write("config.json", serde_json::to_string_pretty(&normal_config)?)?;
+            println!("Initialized empty game direction");
         }
         Command::List(_type) => {
             let jsfile = fs::read_to_string("config.json")?;
@@ -73,18 +72,20 @@ fn handle_args() -> anyhow::Result<()> {
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
         }
         Command::Build { version: None } => {
-            // let jsfile = fs::read_to_string("config.json")?;
-            // let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
+            let jsfile = fs::read_to_string("config.json")?;
+            let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
+            install_mc(&js)?;
             // TODO build mc
-            todo!()
         }
         Command::Build {
             version: Some(_version),
         } => {
             let jsfile = fs::read_to_string("config.json")?;
             let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            js.game_version = _version;
+            js.game_version = _version.clone();
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            println!("Set version to {}", _version);
+            install_mc(&js)?;
         }
         Command::Run => {
             let jsfile = fs::read_to_string("config.json")?;
@@ -98,6 +99,7 @@ fn handle_args() -> anyhow::Result<()> {
                 version_manifest: "http://launchermeta.mojang.com/".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            println!("Set official mirror");
         }
 
         Command::SetMirror(Mirrors::BMCLAPI) => {
@@ -107,6 +109,7 @@ fn handle_args() -> anyhow::Result<()> {
                 version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            println!("Set BMCLAPI mirror");
         }
     }
     Ok(())
