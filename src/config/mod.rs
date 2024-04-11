@@ -11,8 +11,10 @@ pub struct RuntimeConfig {
     pub game_dir: String,
     pub game_version: String,
     pub java_path: String,
+    pub mirror: MCMirror,
 }
 
+#[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifestVersions {
     pub id: String,
@@ -39,4 +41,9 @@ pub enum VersionType {
     All,
     Release,
     Snapshot,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MCMirror {
+    pub version_manifest: String,
 }

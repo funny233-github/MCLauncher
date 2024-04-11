@@ -1,9 +1,9 @@
 use crate::config::RuntimeConfig;
+use log::debug;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 use uuid::Uuid;
 use walkdir::WalkDir;
-use log::debug;
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
@@ -90,7 +90,7 @@ impl RuntimeConfig {
         let mut game_args = replace_arguments_from_game(game_args, self)?;
         args.append(&mut game_args);
 
-        debug!("{:#?}",args);
+        debug!("{:#?}", args);
         Ok(args)
     }
 
