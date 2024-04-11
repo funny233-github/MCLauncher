@@ -1,11 +1,9 @@
 use crate::config::RuntimeConfig;
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
-use json::JsonValue;
+use regex::Regex;
+use std::{collections::HashMap, fs, path::Path};
 use uuid::Uuid;
 use walkdir::WalkDir;
-use regex::Regex;
+use log::debug;
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
@@ -45,7 +43,7 @@ fn replace_arguments_from_game(
     let game_directory = config.game_dir.clone();
     let auth_uuid = Uuid::new_v4().to_string();
     let assets_root = config.game_dir.clone() + "assets/";
-    let assets_index_name = js["assets"].to_string();
+    let assets_index_name = js["assets"].as_str().unwrap().to_string();
     let valuemap = HashMap::from([
         ("${auth_player_name}", config.user_name.clone()),
         ("${version_name}", config.game_version.clone()),
@@ -85,23 +83,26 @@ impl RuntimeConfig {
         let jvm_args = self.get_normal_args_from(jvm)?;
         let mut jvm_args = replace_arguments_from_jvm(jvm_args, self)?;
         args.append(&mut jvm_args);
-        args.push(js["mainClass"].to_string());
+        args.push(js["mainClass"].as_str().unwrap().to_string());
 
         let game = &mut arguments["game"];
         let game_args = self.get_normal_args_from(game)?;
         let mut game_args = replace_arguments_from_game(game_args, self)?;
         args.append(&mut game_args);
 
+        debug!("{:#?}",args);
         Ok(args)
     }
 
-    fn get_normal_args_from(&self, js: &mut JsonValue) -> anyhow::Result<Vec<String>> {
+    fn get_normal_args_from(&self, js: &mut serde_json::Value) -> anyhow::Result<Vec<String>> {
         //TODO parse arg which contain "rules"
         let mut args = Vec::new();
         let mut jvm_normal_arg: Vec<String> = js
-            .members()
+            .as_array()
+            .unwrap()
+            .iter()
             .filter(|x| x.is_string())
-            .map(|x| x.to_string())
+            .map(|x| x.as_str().unwrap().to_string())
             .collect();
         args.append(&mut jvm_normal_arg);
         Ok(args)
@@ -125,14 +126,36 @@ impl RuntimeConfig {
         Ok(res)
     }
 
-
-    fn version_json_provider(&self) -> anyhow::Result<JsonValue> {
+    fn version_json_provider(&self) -> anyhow::Result<serde_json::Value> {
         let jsfile_path = Path::new(&self.game_dir)
             .join("versions")
             .join(&self.game_version)
             .join(self.game_version.clone() + ".json");
         let jsfile = fs::read_to_string(jsfile_path)?;
-        let js = json::parse(&jsfile)?;
+        let js = serde_json::from_str(&jsfile)?;
         Ok(js)
     }
+}
+
+#[test]
+fn test_replace_arguments() {
+    let valuemap = HashMap::from([
+        ("${natives_directory}", "native".to_string()),
+        ("${launcher_name}", "launcher".to_string()),
+    ]);
+    let args = Vec::from([
+        "start--${natives_directory}--end".to_string(),
+        "${abababa}end".to_string(),
+        "normal".to_string(),
+    ]);
+
+    let answer = Vec::from([
+        "start--native--end".to_string(),
+        "${abababa}end".to_string(),
+        "normal".to_string(),
+    ]);
+
+    let res = replace_arguments(args, valuemap);
+
+    assert_eq!(answer, res);
 }
