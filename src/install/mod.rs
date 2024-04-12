@@ -47,7 +47,7 @@ impl PathExist for String {
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
     let version_json = get_version_json(config)?;
-    let version_dir = "versions/".to_string() + config.game_version.as_ref() + "/";
+    let version_dir = config.game_dir.clone() + "versions/" + config.game_version.as_ref() + "/";
     let version_json_file = version_dir.clone() + config.game_version.as_ref() + ".json";
     fs::create_dir_all(version_dir).unwrap_or(());
     fs::write(
@@ -57,11 +57,10 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 
     // install assets
     install_assets_and_asset_index(config, &version_json)?;
-    install_client(config,&version_json)?;
+    install_client(config, &version_json)?;
     //TODO install libraries
     Ok(())
 }
-
 
 fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
@@ -86,9 +85,9 @@ fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Res
         let len = &asset_json.objects.len();
         let hash = &v.hash;
         let url = config.mirror.assets.clone() + &hash[0..2] + "/" + hash;
-        let dir = "assets/objects/".to_string() + &hash[0..2] + "/";
+        let dir = config.game_dir.clone() + "assets/objects/" + &hash[0..2] + "/";
         let file = dir.clone() + hash;
-        if file.path_exists() && Ordering::Equal == fs::read(&file)?.sha1_cmp(hash){
+        if file.path_exists() && Ordering::Equal == fs::read(&file)?.sha1_cmp(hash) {
             cnt += 1;
             continue;
         }
@@ -101,18 +100,18 @@ fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Res
     Ok(())
 }
 
-fn install_client(config: &RuntimeConfig,version_json:& serde_json::Value) -> anyhow::Result<()> {
-    let json_client = &version_json["downloads"]["client"]; 
+fn install_client(config: &RuntimeConfig, version_json: &serde_json::Value) -> anyhow::Result<()> {
+    let json_client = &version_json["downloads"]["client"];
     let url = &json_client["url"].as_str().unwrap().to_string();
     let url = url.replace_domain(&config.mirror.client);
     let sha1 = &json_client["sha1"].as_str().unwrap().to_string();
     let data = install_bytes_with_timeout(&url, sha1)?;
-    let file_dir = "versions/".to_string() + config.game_version.as_ref() + "/";
+    let file_dir = config.game_dir.clone() + "versions/" + config.game_version.as_ref() + "/";
     let file = file_dir.clone() + config.game_version.as_ref() + ".jar";
     fs::create_dir_all(file_dir)?;
     fs::write(file, data)?;
     println!("client installed");
-    Ok(()) 
+    Ok(())
 }
 
 fn install_assets_and_asset_index(
@@ -121,7 +120,7 @@ fn install_assets_and_asset_index(
 ) -> anyhow::Result<()> {
     let ass: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
     let url = ass.url.replace_domain(&config.mirror.version_manifest);
-    let asset_index_dir = "assets/indexes/".to_string();
+    let asset_index_dir = config.game_dir.clone() + "assets/indexes/";
     let asset_index_file = asset_index_dir.clone() + &ass.id + ".json";
 
     info!("get {}", &url);
