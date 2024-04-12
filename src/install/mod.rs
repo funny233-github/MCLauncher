@@ -1,8 +1,48 @@
-use crate::config::{RuntimeConfig, VersionManifestJson, VersionType};
+use crate::config::{AssetIndex, AssetJson, RuntimeConfig, VersionManifestJson, VersionType};
+use log::{debug, error, info};
 use regex::Regex;
 use reqwest::header;
+use sha1::{Digest, Sha1};
+use std::cmp::Ordering;
 use std::fs;
-use log::debug;
+
+trait Sha1Compare {
+    fn sha1_cmp(&self, sha1code: &String) -> Ordering;
+}
+
+trait DomainReplacer<T> {
+    fn replace_domain(&self, domain: &String) -> T;
+}
+
+trait PathExist {
+    fn path_exists(&self) -> bool;
+}
+
+impl DomainReplacer<String> for String {
+    fn replace_domain(&self, domain: &String) -> String {
+        let regex = Regex::new(r"(?<replace>https://\S+?/)").unwrap();
+        let replace = regex.captures(self.as_str()).unwrap();
+        self.replace(&replace["replace"], domain)
+    }
+}
+
+impl<T> Sha1Compare for T
+where
+    T: AsRef<[u8]>,
+{
+    fn sha1_cmp(&self, sha1code: &String) -> Ordering {
+        let mut hasher = Sha1::new();
+        hasher.update(self);
+        let sha1 = hasher.finalize();
+        hex::encode(sha1).cmp(sha1code)
+    }
+}
+
+impl PathExist for String {
+    fn path_exists(&self) -> bool {
+        fs::metadata(self).is_ok()
+    }
+}
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
@@ -16,44 +56,87 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     )?;
 
     // install assets
-    install_assets(config, &version_json)?;
+    install_assets_and_asset_index(config, &version_json)?;
     Ok(())
 }
 
-pub fn install_assets(
+fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<bytes::Bytes> {
+    let client = reqwest::blocking::Client::new();
+    for _ in 0..3 {
+        let send = client
+            .get(url)
+            .header(header::USER_AGENT, "mc_launcher")
+            .send();
+        if let Ok(_send) = send {
+            let data = _send.bytes()?;
+            if let Ordering::Equal = data.sha1_cmp(sha1) {
+                return Ok(data);
+            }
+        }
+    }
+    return Err(anyhow::anyhow!("download {url} fail"));
+}
+
+fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Result<()> {
+    let mut cnt = 0;
+    for (_, v) in &asset_json.objects {
+        let len = &asset_json.objects.len();
+        let hash = &v.hash;
+        let url = config.mirror.assets.clone() + &hash[0..2] + "/" + hash;
+        let dir = "assets/objects/".to_string() + &hash[0..2] + "/";
+        let file = dir.clone() + hash;
+        if file.path_exists() {
+            cnt += 1;
+            continue;
+        }
+        let data = install_bytes_with_timeout(&url, hash)?;
+        fs::create_dir_all(dir)?;
+        fs::write(file, data)?;
+        cnt += 1;
+        println!("{}/{} install asset: {}", cnt, len, hash);
+    }
+    Ok(())
+}
+
+fn install_assets_and_asset_index(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
 ) -> anyhow::Result<()> {
-    let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
-    let asset_index = &version_json["assetIndex"];
-    let id = &asset_index["id"].as_str().unwrap().to_string();
-    let url = &asset_index["url"].as_str().unwrap().to_string();
-    let replace = regex.captures(url.as_str()).unwrap();
-    let url = url.replace(&replace["replace"], config.mirror.version_manifest.as_ref());
-    let _asset_index_sha1 = &asset_index["sha1"].to_string();
+    let ass: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
+    let url = ass.url.replace_domain(&config.mirror.version_manifest);
     let asset_index_dir = "assets/indexes/".to_string();
-    let asset_index_file = asset_index_dir.clone() + id + ".json";
+    let asset_index_file = asset_index_dir.clone() + &ass.id + ".json";
 
-
-    debug!("get {}",&url);
+    info!("get {}", &url);
     let client = reqwest::blocking::Client::new();
-    let data = client
-        .get(&url)
-        .header(header::USER_AGENT, "mc_launcher")
-        .send()?
-        .text()?;
-    
-    fs::create_dir_all(asset_index_dir)?;
-    fs::write(asset_index_file, data)?;
+    for i in 0..=3 {
+        let data = client
+            .get(&url)
+            .header(header::USER_AGENT, "mc_launcher")
+            .send()?
+            .text()?;
+        if let Ordering::Equal = data.sha1_cmp(&ass.sha1) {
+            fs::create_dir_all(asset_index_dir)?;
+            fs::write(asset_index_file, &data)?;
+            info!("get assets json");
+            let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
+            install_assets(config, &datajson)?;
+            break;
+        };
+        if i == 3 {
+            return Err(anyhow::anyhow!("can't get assets json"));
+        }
+        error!("get assets json fail, then retry");
+    }
 
+    println!("assets installed");
     Ok(())
 }
 
 pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Value> {
     let version = config.game_version.as_ref();
-    let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
     let manifest = VersionManifestJson::new(config)?;
-    let mut url = manifest
+    let url = manifest
         .versions
         .iter()
         .find(|x| x.id == version)
@@ -61,11 +144,10 @@ pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Va
         .url
         .clone();
 
-    let replace = regex.captures(url.as_str()).unwrap();
-    url = url.replace(&replace["replace"], config.mirror.version_manifest.as_ref());
+    let url = url.replace_domain(&config.mirror.version_manifest);
 
     let client = reqwest::blocking::Client::new();
-    debug!("get {}",&url);
+    debug!("get {}", &url);
     let data = client
         .get(&url)
         .header(header::USER_AGENT, "mc_launcher")
@@ -81,7 +163,7 @@ impl VersionManifestJson {
         let mut url = config.mirror.version_manifest.clone();
         url += "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
-        debug!("{}",&url);
+        debug!("{}", &url);
         let data: VersionManifestJson = client
             .get(&url)
             .header(header::USER_AGENT, "mc_launcher")
@@ -122,6 +204,7 @@ fn test_get_manifest() {
         java_path: "/usr/bin/java".to_string(),
         mirror: crate::config::MCMirror {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
+            assets: "...".to_string(),
         },
     };
     let _ = VersionManifestJson::new(&config).unwrap();
@@ -140,6 +223,7 @@ fn test_get_version_json() {
         java_path: "/usr/bin/java".to_string(),
         mirror: crate::config::MCMirror {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
+            assets: "...".to_string(),
         },
     };
     let _ = get_version_json(&config).unwrap();

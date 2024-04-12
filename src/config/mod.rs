@@ -1,5 +1,6 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RuntimeConfig {
@@ -46,4 +47,26 @@ pub enum VersionType {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MCMirror {
     pub version_manifest: String,
+    pub assets: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetIndex {
+    pub totalSize: usize,
+    pub id: String,
+    pub url: String,
+    pub sha1: String,
+    pub size: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetJsonObject {
+    pub hash: String,
+    pub size: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AssetJson {
+    pub objects: HashMap<String, AssetJsonObject>,
 }

@@ -53,7 +53,8 @@ fn handle_args() -> anyhow::Result<()> {
                 game_version: "no_game_version".to_string(),
                 java_path: "/usr/bin/java".to_string(),
                 mirror: MCMirror {
-                    version_manifest: "http://launchermeta.mojang.com/".to_string(),
+                    version_manifest: "https://launchermeta.mojang.com/".to_string(),
+                    assets: "https://resources.download.minecraft.net/".to_string(),
                 },
             };
             fs::write("config.json", serde_json::to_string_pretty(&normal_config)?)?;
@@ -75,7 +76,6 @@ fn handle_args() -> anyhow::Result<()> {
             let jsfile = fs::read_to_string("config.json")?;
             let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
             install_mc(&js)?;
-            // TODO build mc
         }
         Command::Build {
             version: Some(_version),
@@ -96,7 +96,8 @@ fn handle_args() -> anyhow::Result<()> {
             let jsfile = fs::read_to_string("config.json")?;
             let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
             js.mirror = MCMirror {
-                version_manifest: "http://launchermeta.mojang.com/".to_string(),
+                version_manifest: "https://launchermeta.mojang.com/".to_string(),
+                assets: "https://resources.download.minecraft.net/".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
             println!("Set official mirror");
@@ -107,6 +108,7 @@ fn handle_args() -> anyhow::Result<()> {
             let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
             js.mirror = MCMirror {
                 version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
+                assets: "https://bmclapi2.bangbang93.com/assets/".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
             println!("Set BMCLAPI mirror");
