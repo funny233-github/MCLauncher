@@ -48,6 +48,7 @@ pub enum VersionType {
 pub struct MCMirror {
     pub version_manifest: String,
     pub assets: String,
+    pub client: String,
 }
 
 #[allow(non_snake_case)]

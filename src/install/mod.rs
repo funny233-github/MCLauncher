@@ -57,8 +57,11 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 
     // install assets
     install_assets_and_asset_index(config, &version_json)?;
+    install_client(config,&version_json)?;
+    //TODO install libraries
     Ok(())
 }
+
 
 fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
@@ -85,7 +88,7 @@ fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Res
         let url = config.mirror.assets.clone() + &hash[0..2] + "/" + hash;
         let dir = "assets/objects/".to_string() + &hash[0..2] + "/";
         let file = dir.clone() + hash;
-        if file.path_exists() {
+        if file.path_exists() && Ordering::Equal == fs::read(&file)?.sha1_cmp(hash){
             cnt += 1;
             continue;
         }
@@ -93,9 +96,23 @@ fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Res
         fs::create_dir_all(dir)?;
         fs::write(file, data)?;
         cnt += 1;
-        println!("{}/{} install asset: {}", cnt, len, hash);
+        println!("{}/{} asset: {} has installed", cnt, len, hash);
     }
     Ok(())
+}
+
+fn install_client(config: &RuntimeConfig,version_json:& serde_json::Value) -> anyhow::Result<()> {
+    let json_client = &version_json["downloads"]["client"]; 
+    let url = &json_client["url"].as_str().unwrap().to_string();
+    let url = url.replace_domain(&config.mirror.client);
+    let sha1 = &json_client["sha1"].as_str().unwrap().to_string();
+    let data = install_bytes_with_timeout(&url, sha1)?;
+    let file_dir = "versions/".to_string() + config.game_version.as_ref() + "/";
+    let file = file_dir.clone() + config.game_version.as_ref() + ".jar";
+    fs::create_dir_all(file_dir)?;
+    fs::write(file, data)?;
+    println!("client installed");
+    Ok(()) 
 }
 
 fn install_assets_and_asset_index(
@@ -205,6 +222,7 @@ fn test_get_manifest() {
         mirror: crate::config::MCMirror {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             assets: "...".to_string(),
+            client: "...".to_string(),
         },
     };
     let _ = VersionManifestJson::new(&config).unwrap();
@@ -224,6 +242,7 @@ fn test_get_version_json() {
         mirror: crate::config::MCMirror {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             assets: "...".to_string(),
+            client: "...".to_string(),
         },
     };
     let _ = get_version_json(&config).unwrap();

@@ -55,6 +55,7 @@ fn handle_args() -> anyhow::Result<()> {
                 mirror: MCMirror {
                     version_manifest: "https://launchermeta.mojang.com/".to_string(),
                     assets: "https://resources.download.minecraft.net/".to_string(),
+                    client: "https://launcher.mojang.com/".to_string(),
                 },
             };
             fs::write("config.json", serde_json::to_string_pretty(&normal_config)?)?;
@@ -98,6 +99,7 @@ fn handle_args() -> anyhow::Result<()> {
             js.mirror = MCMirror {
                 version_manifest: "https://launchermeta.mojang.com/".to_string(),
                 assets: "https://resources.download.minecraft.net/".to_string(),
+                client: "https://launcher.mojang.com/".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
             println!("Set official mirror");
@@ -109,6 +111,7 @@ fn handle_args() -> anyhow::Result<()> {
             js.mirror = MCMirror {
                 version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
                 assets: "https://bmclapi2.bangbang93.com/assets/".to_string(),
+                client: "https://bmclapi2.bangbang93.com".to_string(),
             };
             fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
             println!("Set BMCLAPI mirror");
