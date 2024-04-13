@@ -2,7 +2,7 @@ use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeConfig {
     pub max_memory_size: u32,
     pub window_weight: u32,
@@ -44,7 +44,7 @@ pub enum VersionType {
     Snapshot,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MCMirror {
     pub version_manifest: String,
     pub assets: String,
@@ -71,3 +71,13 @@ pub struct AssetJsonObject {
 pub struct AssetJson {
     pub objects: HashMap<String, AssetJsonObject>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LibDownloadsObject {}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LibrarieObject {
+    pub name: String,
+    pub downloads: LibDownloadsObject,
+}
+pub type VersionJsonLibraries = Vec<String>;

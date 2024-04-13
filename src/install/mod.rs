@@ -1,10 +1,17 @@
-use crate::config::{AssetIndex, AssetJson, RuntimeConfig, VersionManifestJson, VersionType};
+use crate::config::{
+    AssetIndex, AssetJson, AssetJsonObject, RuntimeConfig, VersionManifestJson, VersionType,
+};
 use log::{debug, error, info};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
+use std::collections::VecDeque;
 use std::fs;
+use std::thread;
+use std::thread::JoinHandle;
+
+const MAX_THREAD: usize = 10;
 
 trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &String) -> Ordering;
@@ -79,23 +86,41 @@ fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<byt
     return Err(anyhow::anyhow!("download {url} fail"));
 }
 
-fn install_assets(config: &RuntimeConfig, asset_json: &AssetJson) -> anyhow::Result<()> {
-    let mut cnt = 0;
-    for (_, v) in &asset_json.objects {
-        let len = &asset_json.objects.len();
+fn install_libraries() {
+    todo!()
+}
+
+fn install_single_asset(config: RuntimeConfig, value: Option<(String, AssetJsonObject)>) {
+    if let Some(_value) = value {
+        let (_, v) = _value;
         let hash = &v.hash;
         let url = config.mirror.assets.clone() + &hash[0..2] + "/" + hash;
         let dir = config.game_dir.clone() + "assets/objects/" + &hash[0..2] + "/";
         let file = dir.clone() + hash;
-        if file.path_exists() && Ordering::Equal == fs::read(&file)?.sha1_cmp(hash) {
-            cnt += 1;
-            continue;
+        if file.path_exists() && Ordering::Equal == fs::read(&file).unwrap().sha1_cmp(hash) {
+            println!("asset {} has installed", hash);
+            return;
         }
-        let data = install_bytes_with_timeout(&url, hash)?;
-        fs::create_dir_all(dir)?;
-        fs::write(file, data)?;
-        cnt += 1;
-        println!("{}/{} asset: {} has installed", cnt, len, hash);
+        let data = install_bytes_with_timeout(&url, hash).unwrap();
+        fs::create_dir_all(dir).unwrap();
+        fs::write(file, data).unwrap();
+        println!("asset {} has installed", hash);
+    }
+}
+
+fn install_assets(config: &RuntimeConfig, asset_json: AssetJson) -> anyhow::Result<()> {
+    let mut queue: VecDeque<(String, AssetJsonObject)> = asset_json.objects.into_iter().collect();
+    while queue.len() > 0 {
+        let mut handles: VecDeque<JoinHandle<()>> = VecDeque::new();
+        for _ in 0..MAX_THREAD {
+            let value = queue.pop_back();
+            let conf = config.clone();
+            let thr = thread::spawn(move || install_single_asset(conf,value));
+            handles.push_back(thr);
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
     Ok(())
 }
@@ -136,7 +161,7 @@ fn install_assets_and_asset_index(
             fs::write(asset_index_file, &data)?;
             info!("get assets json");
             let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
-            install_assets(config, &datajson)?;
+            install_assets(config, datajson)?;
             break;
         };
         if i == 3 {

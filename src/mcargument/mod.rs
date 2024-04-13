@@ -26,7 +26,8 @@ fn replace_arguments_from_jvm(
     let valuemap = HashMap::from([
         (
             "${natives_directory}",
-            config.game_dir.clone() + "versions/" + &config.game_version + "/natives-linux-x86_64",
+            // config.game_dir.clone() + "versions/" + &config.game_version + "/natives-linux-x86_64",
+            config.game_dir.clone() + "natives/",
         ),
         ("${launcher_name}", "my_launcher".to_string()),
         ("${launcher_version}", "114.514".to_string()),
