@@ -1,5 +1,6 @@
 use crate::config::{
-    AssetIndex, AssetJson, AssetJsonObject, RuntimeConfig, VersionManifestJson, VersionType,
+    AssetIndex, AssetJson, AssetJsonObject, RuntimeConfig, VersionJsonLibraries,
+    VersionManifestJson, VersionType,
 };
 use log::{debug, error, info};
 use regex::Regex;
@@ -8,10 +9,11 @@ use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
 use std::collections::VecDeque;
 use std::fs;
+use std::path::Path;
 use std::thread;
 use std::thread::JoinHandle;
 
-const MAX_THREAD: usize = 10;
+const MAX_THREAD: usize = 32;
 
 trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &String) -> Ordering;
@@ -56,16 +58,17 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let version_json = get_version_json(config)?;
     let version_dir = config.game_dir.clone() + "versions/" + config.game_version.as_ref() + "/";
     let version_json_file = version_dir.clone() + config.game_version.as_ref() + ".json";
+    let native_dir = config.game_dir.clone() + "natives/";
+    fs::create_dir_all(native_dir).unwrap_or(());
     fs::create_dir_all(version_dir).unwrap_or(());
     fs::write(
         version_json_file,
         serde_json::to_string_pretty(&version_json)?,
     )?;
 
-    // install assets
     install_assets_and_asset_index(config, &version_json)?;
+    install_libraries_and_native(config, &version_json)?;
     install_client(config, &version_json)?;
-    //TODO install libraries
     Ok(())
 }
 
@@ -86,8 +89,63 @@ fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<byt
     return Err(anyhow::anyhow!("download {url} fail"));
 }
 
-fn install_libraries() {
-    todo!()
+fn install_single_library(config: RuntimeConfig, value: Option<(String, String)>) {
+    if let Some((path, hash)) = value {
+        let url = config.mirror.libraries.clone() + &path;
+        let lib_path = config.game_dir.clone() + "libraries/" + &path;
+        let lib_path = Path::new(&lib_path);
+        let lib_dir = lib_path.parent().unwrap().to_str().unwrap().to_string();
+        let lib_path = lib_path.to_str().unwrap().to_string();
+        if lib_path.path_exists() && Ordering::Equal == fs::read(&lib_path).unwrap().sha1_cmp(&hash)
+        {
+            println!("library {} has installed", path);
+        }
+        let data = install_bytes_with_timeout(&url, &hash).unwrap();
+        fs::create_dir_all(lib_dir).unwrap();
+        fs::write(lib_path, data).unwrap();
+        println!("library {} has installed", path);
+    }
+}
+
+fn install_libraries_and_native(
+    config: &RuntimeConfig,
+    version_json: &serde_json::Value,
+) -> anyhow::Result<()> {
+    fs::create_dir_all(config.game_dir.clone() + "libraries/").unwrap();
+    let libraries: VersionJsonLibraries =
+        serde_json::from_value(version_json["libraries"].clone())?;
+    let mut libraries_url_sha1: VecDeque<(String, String)> = libraries
+        .iter()
+        .filter(|obj| {
+            let objs = &obj.rules.clone();
+            if let Some(_objs) = objs {
+                let flag = _objs
+                    .iter()
+                    .find(|rules| rules.os.clone().unwrap_or_default()["name"] == "linux");
+                obj.downloads.classifiers == None && flag.clone() != None
+            } else {
+                obj.downloads.classifiers == None
+            }
+        })
+        .map(|x| {
+            let path = x.downloads.artifact.path.clone();
+            let sha1 = x.downloads.artifact.sha1.clone();
+            (path, sha1)
+        })
+        .collect();
+    while libraries_url_sha1.len() > 0 {
+        let mut handles: VecDeque<JoinHandle<()>> = VecDeque::new();
+        for _ in 0..MAX_THREAD {
+            let value = libraries_url_sha1.pop_back();
+            let conf = config.clone();
+            let thr = thread::spawn(move || install_single_library(conf, value));
+            handles.push_back(thr);
+        }
+        for handle in handles {
+            handle.join().unwrap();
+        }
+    }
+    Ok(())
 }
 
 fn install_single_asset(config: RuntimeConfig, value: Option<(String, AssetJsonObject)>) {
@@ -115,7 +173,7 @@ fn install_assets(config: &RuntimeConfig, asset_json: AssetJson) -> anyhow::Resu
         for _ in 0..MAX_THREAD {
             let value = queue.pop_back();
             let conf = config.clone();
-            let thr = thread::spawn(move || install_single_asset(conf,value));
+            let thr = thread::spawn(move || install_single_asset(conf, value));
             handles.push_back(thr);
         }
         for handle in handles {
@@ -133,6 +191,10 @@ fn install_client(config: &RuntimeConfig, version_json: &serde_json::Value) -> a
     let data = install_bytes_with_timeout(&url, sha1)?;
     let file_dir = config.game_dir.clone() + "versions/" + config.game_version.as_ref() + "/";
     let file = file_dir.clone() + config.game_version.as_ref() + ".jar";
+    if file.path_exists() && Ordering::Equal == fs::read(&file).unwrap().sha1_cmp(sha1) {
+        println!("client installed");
+        return Ok(());
+    }
     fs::create_dir_all(file_dir)?;
     fs::write(file, data)?;
     println!("client installed");
@@ -270,4 +332,26 @@ fn test_get_version_json() {
         },
     };
     let _ = get_version_json(&config).unwrap();
+}
+
+#[test]
+fn test_get_version_json_libraries() {
+    let config = RuntimeConfig {
+        max_memory_size: 5000,
+        window_weight: 854,
+        window_height: 480,
+        user_name: "no_name".to_string(),
+        user_type: "offline".to_string(),
+        game_dir: "somepath".to_string(),
+        game_version: "1.20.4".to_string(),
+        java_path: "/usr/bin/java".to_string(),
+        mirror: crate::config::MCMirror {
+            version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
+            assets: "...".to_string(),
+            client: "...".to_string(),
+        },
+    };
+    let version_json = get_version_json(&config).unwrap();
+    let _: VersionJsonLibraries =
+        serde_json::from_value(version_json["libraries"].clone()).unwrap();
 }

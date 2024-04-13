@@ -1,9 +1,8 @@
-use crate::config::RuntimeConfig;
+use crate::config::{RuntimeConfig, VersionJsonLibraries};
 use log::debug;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 use uuid::Uuid;
-use walkdir::WalkDir;
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
@@ -24,11 +23,7 @@ fn replace_arguments_from_jvm(
     config: &RuntimeConfig,
 ) -> anyhow::Result<Vec<String>> {
     let valuemap = HashMap::from([
-        (
-            "${natives_directory}",
-            // config.game_dir.clone() + "versions/" + &config.game_version + "/natives-linux-x86_64",
-            config.game_dir.clone() + "natives/",
-        ),
+        ("${natives_directory}", config.game_dir.clone() + "natives/"),
         ("${launcher_name}", "my_launcher".to_string()),
         ("${launcher_version}", "114.514".to_string()),
         ("${classpath}", config.get_classpaths()?),
@@ -110,20 +105,38 @@ impl RuntimeConfig {
     }
 
     fn get_classpaths(&self) -> anyhow::Result<String> {
-        let classpath_dir = Path::new(&self.game_dir).join("libraries");
-        let mut res = String::new();
-        for entry in WalkDir::new(classpath_dir) {
-            if let Some(e) = entry?.path().to_str() {
-                res += e;
-                res += ":";
-            }
-        }
-        res += self.game_dir.as_ref();
-        res += "versions/";
-        res += self.game_version.as_ref();
-        res += "/";
-        res += self.game_version.as_ref();
-        res += ".jar";
+        let version_json_path = Path::new(&self.game_dir)
+            .join("versions")
+            .join(&self.game_version)
+            .join(self.game_version.clone() + ".json");
+        let version_json = fs::read_to_string(version_json_path)?;
+        let version_json: serde_json::Value = serde_json::from_str(version_json.as_ref())?;
+        let libraries: VersionJsonLibraries =
+            serde_json::from_value(version_json["libraries"].clone())?;
+        let mut paths: Vec<String> = libraries
+            .iter()
+            .filter(|obj| {
+                let objs = &obj.rules.clone();
+                if let Some(_objs) = objs {
+                    let flag = _objs
+                        .iter()
+                        .find(|rules| rules.os.clone().unwrap_or_default()["name"] == "linux");
+                    obj.downloads.classifiers == None && flag.clone() != None
+                } else {
+                    obj.downloads.classifiers == None
+                }
+            })
+            .map(|x| self.game_dir.clone() + "libraries/" + x.downloads.artifact.path.as_ref())
+            .collect();
+
+        let client_path = self.game_dir.clone()
+            + "versions/"
+            + &self.game_version
+            + "/"
+            + &self.game_version
+            + ".jar";
+        paths.push(client_path);
+        let res = paths.join(":");
         Ok(res)
     }
 
