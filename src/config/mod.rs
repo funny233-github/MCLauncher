@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 // runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -108,3 +108,20 @@ pub struct LibrarieObject {
     pub rules: Option<Vec<LibRules>>,
 }
 pub type VersionJsonLibraries = Vec<LibrarieObject>;
+
+// install descriptor
+pub enum InstallType {
+    Asset,
+    Library,
+    Client,
+}
+
+pub struct InstallSingleDescriptor {
+    pub url: String,
+    pub sha1: String,
+    pub save_dir: String,
+    pub file_name: String,
+    pub r#type: InstallType,
+}
+
+pub type InstallDescriptors = VecDeque<InstallSingleDescriptor>;

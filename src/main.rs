@@ -4,7 +4,7 @@ use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
 use log::error;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -42,9 +42,7 @@ enum Mirrors {
 
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
-    let config_path:&Path = Path::new("config.toml");
-    let config = fs::read_to_string("config.toml")?;
-    let mut config: RuntimeConfig = toml::from_str(&config)?;
+    let config_path: PathBuf = Path::new(".").join("config.toml");
     match args.command {
         Command::Init => {
             let normal_config = RuntimeConfig {
@@ -67,28 +65,40 @@ fn handle_args() -> anyhow::Result<()> {
             println!("Initialized empty game direction");
         }
         Command::List(_type) => {
+            let config = fs::read_to_string("config.toml")?;
+            let config: RuntimeConfig = toml::from_str(&config)?;
             let list = VersionManifestJson::new(&config)?.version_list(_type);
             println!("{:?}", list);
         }
         Command::Account { name: _name } => {
+            let config = fs::read_to_string("config.toml")?;
+            let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.user_name = _name;
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
         }
         Command::Build { version: None } => {
+            let config = fs::read_to_string("config.toml")?;
+            let config: RuntimeConfig = toml::from_str(&config)?;
             install_mc(&config)?;
         }
         Command::Build {
             version: Some(_version),
         } => {
+            let config = fs::read_to_string("config.toml")?;
+            let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.game_version = _version.clone();
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set version to {}", _version);
             install_mc(&config)?;
         }
         Command::Run => {
+            let config = fs::read_to_string("config.toml")?;
+            let config: RuntimeConfig = toml::from_str(&config)?;
             gameruntime(config)?;
         }
         Command::SetMirror(Mirrors::Official) => {
+            let config = fs::read_to_string("config.toml")?;
+            let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.mirror = MCMirror {
                 version_manifest: "https://launchermeta.mojang.com/".to_string(),
                 assets: "https://resources.download.minecraft.net/".to_string(),
@@ -100,6 +110,8 @@ fn handle_args() -> anyhow::Result<()> {
         }
 
         Command::SetMirror(Mirrors::BMCLAPI) => {
+            let config = fs::read_to_string("config.toml")?;
+            let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.mirror = MCMirror {
                 version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
                 assets: "https://bmclapi2.bangbang93.com/assets/".to_string(),
