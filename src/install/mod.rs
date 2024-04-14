@@ -309,6 +309,7 @@ fn test_get_manifest() {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             assets: "...".to_string(),
             client: "...".to_string(),
+            libraries: "...".to_string(),
         },
     };
     let _ = VersionManifestJson::new(&config).unwrap();
@@ -329,6 +330,7 @@ fn test_get_version_json() {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             assets: "...".to_string(),
             client: "...".to_string(),
+            libraries: "...".to_string(),
         },
     };
     let _ = get_version_json(&config).unwrap();
@@ -349,6 +351,7 @@ fn test_get_version_json_libraries() {
             version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
             assets: "...".to_string(),
             client: "...".to_string(),
+            libraries: "...".to_string(),
         },
     };
     let version_json = get_version_json(&config).unwrap();

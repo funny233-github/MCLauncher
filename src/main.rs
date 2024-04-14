@@ -4,6 +4,7 @@ use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
 use log::error;
 use std::fs;
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -41,6 +42,9 @@ enum Mirrors {
 
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
+    let config_path:&Path = Path::new("config.toml");
+    let config = fs::read_to_string("config.toml")?;
+    let mut config: RuntimeConfig = toml::from_str(&config)?;
     match args.command {
         Command::Init => {
             let normal_config = RuntimeConfig {
@@ -59,64 +63,50 @@ fn handle_args() -> anyhow::Result<()> {
                     libraries: "https://libraries.minecraft.net/".to_string(),
                 },
             };
-            fs::write("config.json", serde_json::to_string_pretty(&normal_config)?)?;
+            fs::write(config_path, toml::to_string_pretty(&normal_config)?)?;
             println!("Initialized empty game direction");
         }
         Command::List(_type) => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            let list = VersionManifestJson::new(&js)?.version_list(_type);
+            let list = VersionManifestJson::new(&config)?.version_list(_type);
             println!("{:?}", list);
         }
         Command::Account { name: _name } => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            js.user_name = _name;
-            fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            config.user_name = _name;
+            fs::write(config_path, toml::to_string_pretty(&config)?)?;
         }
         Command::Build { version: None } => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            install_mc(&js)?;
+            install_mc(&config)?;
         }
         Command::Build {
             version: Some(_version),
         } => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            js.game_version = _version.clone();
-            fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            config.game_version = _version.clone();
+            fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set version to {}", _version);
-            install_mc(&js)?;
+            install_mc(&config)?;
         }
         Command::Run => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            gameruntime(js)?;
+            gameruntime(config)?;
         }
         Command::SetMirror(Mirrors::Official) => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            js.mirror = MCMirror {
+            config.mirror = MCMirror {
                 version_manifest: "https://launchermeta.mojang.com/".to_string(),
                 assets: "https://resources.download.minecraft.net/".to_string(),
                 client: "https://launcher.mojang.com/".to_string(),
                 libraries: "https://libraries.minecraft.net/".to_string(),
             };
-            fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set official mirror");
         }
 
         Command::SetMirror(Mirrors::BMCLAPI) => {
-            let jsfile = fs::read_to_string("config.json")?;
-            let mut js: RuntimeConfig = serde_json::from_str(&jsfile)?;
-            js.mirror = MCMirror {
+            config.mirror = MCMirror {
                 version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
                 assets: "https://bmclapi2.bangbang93.com/assets/".to_string(),
                 client: "https://bmclapi2.bangbang93.com/".to_string(),
                 libraries: "https://bmclapi2.bangbang93.com/maven/".to_string(),
             };
-            fs::write("config.json", serde_json::to_string_pretty(&js)?)?;
+            fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set BMCLAPI mirror");
         }
     }
