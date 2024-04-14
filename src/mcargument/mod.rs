@@ -13,7 +13,7 @@ fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<
                     return x.replace(&c["replace"], content);
                 }
             }
-            x.to_string()
+            x.into()
         })
         .collect()
 }
@@ -22,10 +22,11 @@ fn replace_arguments_from_jvm(
     args: Vec<String>,
     config: &RuntimeConfig,
 ) -> anyhow::Result<Vec<String>> {
+    let natives_dir = Path::new(&config.game_dir).join("natives").to_string_lossy().into();
     let valuemap = HashMap::from([
-        ("${natives_directory}", config.game_dir.clone() + "natives/"),
-        ("${launcher_name}", "my_launcher".to_string()),
-        ("${launcher_version}", "114.514".to_string()),
+        ("${natives_directory}", natives_dir),
+        ("${launcher_name}", "my_launcher".into()),
+        ("${launcher_version}", "114.514".into()),
         ("${classpath}", config.get_classpaths()?),
     ]);
     Ok(replace_arguments(args, valuemap))
@@ -37,9 +38,12 @@ fn replace_arguments_from_game(
 ) -> anyhow::Result<Vec<String>> {
     let js = config.version_json_provider()?;
     let game_directory = config.game_dir.clone();
-    let auth_uuid = Uuid::new_v4().to_string();
-    let assets_root = config.game_dir.clone() + "assets/";
-    let assets_index_name = js["assets"].as_str().unwrap().to_string();
+    let auth_uuid = Uuid::new_v4().into();
+    let assets_root: String = Path::new(&config.game_dir)
+        .join("assets")
+        .to_string_lossy()
+        .into();
+    let assets_index_name = js["assets"].as_str().unwrap().into();
     let valuemap = HashMap::from([
         ("${auth_player_name}", config.user_name.clone()),
         ("${version_name}", config.game_version.clone()),
@@ -48,7 +52,7 @@ fn replace_arguments_from_game(
         ("${assets_index_name}", assets_index_name),
         ("${auth_uuid}", auth_uuid),
         ("${user_type}", config.user_type.clone()),
-        ("${version_type}", "release".to_string()),
+        ("${version_type}", "release".into()),
     ]);
     //TODO get user info
     // valuemap.insert("${auth_access_token}","");
@@ -79,7 +83,7 @@ impl RuntimeConfig {
         let jvm_args = self.get_normal_args_from(jvm)?;
         let mut jvm_args = replace_arguments_from_jvm(jvm_args, self)?;
         args.append(&mut jvm_args);
-        args.push(js["mainClass"].as_str().unwrap().to_string());
+        args.push(js["mainClass"].as_str().unwrap().into());
 
         let game = &mut arguments["game"];
         let game_args = self.get_normal_args_from(game)?;
@@ -98,7 +102,7 @@ impl RuntimeConfig {
             .unwrap()
             .iter()
             .filter(|x| x.is_string())
-            .map(|x| x.as_str().unwrap().to_string())
+            .map(|x| x.as_str().unwrap().into())
             .collect();
         args.append(&mut jvm_normal_arg);
         Ok(args)
@@ -126,15 +130,21 @@ impl RuntimeConfig {
                     obj.downloads.classifiers == None
                 }
             })
-            .map(|x| self.game_dir.clone() + "libraries/" + x.downloads.artifact.path.as_ref())
+            .map(|x| {
+                Path::new(&self.game_dir)
+                    .join("libraries")
+                    .join(&x.downloads.artifact.path)
+                    .to_string_lossy()
+                    .into()
+            })
             .collect();
 
-        let client_path = self.game_dir.clone()
-            + "versions/"
-            + &self.game_version
-            + "/"
-            + &self.game_version
-            + ".jar";
+        let client_path = Path::new(&self.game_dir)
+            .join("versions")
+            .join(&self.game_version)
+            .join(self.game_version.clone() + ".jar")
+            .to_string_lossy()
+            .into();
         paths.push(client_path);
         let res = paths.join(":");
         Ok(res)
@@ -154,19 +164,19 @@ impl RuntimeConfig {
 #[test]
 fn test_replace_arguments() {
     let valuemap = HashMap::from([
-        ("${natives_directory}", "native".to_string()),
-        ("${launcher_name}", "launcher".to_string()),
+        ("${natives_directory}", "native".into()),
+        ("${launcher_name}", "launcher".into()),
     ]);
     let args = Vec::from([
-        "start--${natives_directory}--end".to_string(),
-        "${abababa}end".to_string(),
-        "normal".to_string(),
+        "start--${natives_directory}--end".into(), 
+        "${abababa}end".into(), 
+        "normal".into(), 
     ]);
 
     let answer = Vec::from([
-        "start--native--end".to_string(),
-        "${abababa}end".to_string(),
-        "normal".to_string(),
+        "start--native--end".to_string(), 
+        "${abababa}end".to_string(), 
+        "normal".to_string(), 
     ]);
 
     let res = replace_arguments(args, valuemap);
