@@ -51,7 +51,7 @@ fn handle_args() -> anyhow::Result<()> {
         user_type: "offline".into(),
         game_dir: std::env::current_dir()?.to_str().unwrap().to_string() + "/",
         game_version: "no_game_version".into(),
-        java_path: "/usr/bin/java".into(),
+        java_path: "java".into(),
         mirror: MCMirror {
             version_manifest: "https://launchermeta.mojang.com/".into(),
             assets: "https://resources.download.minecraft.net/".into(),
