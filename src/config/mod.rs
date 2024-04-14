@@ -25,14 +25,14 @@ pub struct RuntimeConfig {
 }
 
 // version manifest
-#[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VersionManifestVersions {
     pub id: String,
     pub r#type: String,
     pub url: String,
     pub time: String,
-    pub releaseTime: String,
+    #[serde[rename = "releaseTime"]]
+    pub release_time: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,7 +59,8 @@ pub enum VersionType {
 #[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssetIndex {
-    pub totalSize: usize,
+    #[serde[rename = "totalSize"]]
+    pub total_size: usize,
     pub id: String,
     pub url: String,
     pub sha1: String,
