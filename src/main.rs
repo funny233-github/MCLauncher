@@ -4,7 +4,7 @@ use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
 use log::error;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -42,25 +42,25 @@ enum Mirrors {
 
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
-    let config_path: PathBuf = Path::new(".").join("config.toml");
+    let config_path = Path::new(".").join("config.toml");
+    let normal_config = RuntimeConfig {
+        max_memory_size: 5000,
+        window_weight: 854,
+        window_height: 480,
+        user_name: "no_name".into(),
+        user_type: "offline".into(),
+        game_dir: std::env::current_dir()?.to_str().unwrap().to_string() + "/",
+        game_version: "no_game_version".into(),
+        java_path: "/usr/bin/java".into(),
+        mirror: MCMirror {
+            version_manifest: "https://launchermeta.mojang.com/".into(),
+            assets: "https://resources.download.minecraft.net/".into(),
+            client: "https://launcher.mojang.com/".into(),
+            libraries: "https://libraries.minecraft.net/".into(),
+        },
+    };
     match args.command {
         Command::Init => {
-            let normal_config = RuntimeConfig {
-                max_memory_size: 5000,
-                window_weight: 854,
-                window_height: 480,
-                user_name: "no_name".to_string(),
-                user_type: "offline".to_string(),
-                game_dir: std::env::current_dir()?.to_str().unwrap().to_string() + "/",
-                game_version: "no_game_version".to_string(),
-                java_path: "/usr/bin/java".to_string(),
-                mirror: MCMirror {
-                    version_manifest: "https://launchermeta.mojang.com/".to_string(),
-                    assets: "https://resources.download.minecraft.net/".to_string(),
-                    client: "https://launcher.mojang.com/".to_string(),
-                    libraries: "https://libraries.minecraft.net/".to_string(),
-                },
-            };
             fs::write(config_path, toml::to_string_pretty(&normal_config)?)?;
             println!("Initialized empty game direction");
         }
@@ -100,10 +100,10 @@ fn handle_args() -> anyhow::Result<()> {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.mirror = MCMirror {
-                version_manifest: "https://launchermeta.mojang.com/".to_string(),
-                assets: "https://resources.download.minecraft.net/".to_string(),
-                client: "https://launcher.mojang.com/".to_string(),
-                libraries: "https://libraries.minecraft.net/".to_string(),
+                version_manifest: "https://launchermeta.mojang.com/".into(),
+                assets: "https://resources.download.minecraft.net/".into(),
+                client: "https://launcher.mojang.com/".into(),
+                libraries: "https://libraries.minecraft.net/".into(),
             };
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set official mirror");
@@ -113,10 +113,10 @@ fn handle_args() -> anyhow::Result<()> {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.mirror = MCMirror {
-                version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
-                assets: "https://bmclapi2.bangbang93.com/assets/".to_string(),
-                client: "https://bmclapi2.bangbang93.com/".to_string(),
-                libraries: "https://bmclapi2.bangbang93.com/maven/".to_string(),
+                version_manifest: "https://bmclapi2.bangbang93.com/".into(),
+                assets: "https://bmclapi2.bangbang93.com/assets/".into(),
+                client: "https://bmclapi2.bangbang93.com/".into(),
+                libraries: "https://bmclapi2.bangbang93.com/maven/".into(),
             };
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
             println!("Set BMCLAPI mirror");
