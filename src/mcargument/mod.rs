@@ -4,6 +4,15 @@ use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 use uuid::Uuid;
 
+#[cfg(target_os = "windows")]
+const CLASSPATH_SEPARATOR:&str = ";";
+
+#[cfg(target_os = "linux")]
+const CLASSPATH_SEPARATOR:&str = ":";
+
+#[cfg(target_os = "macos")]
+const CLASSPATH_SEPARATOR:&str = ":";
+
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
     args.iter()
@@ -149,7 +158,7 @@ impl RuntimeConfig {
             .to_string_lossy()
             .into();
         paths.push(client_path);
-        let res = paths.join(":");
+        let res = paths.join(CLASSPATH_SEPARATOR);
         Ok(res)
     }
 
