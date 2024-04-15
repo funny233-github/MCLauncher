@@ -22,7 +22,10 @@ fn replace_arguments_from_jvm(
     args: Vec<String>,
     config: &RuntimeConfig,
 ) -> anyhow::Result<Vec<String>> {
-    let natives_dir = Path::new(&config.game_dir).join("natives").to_string_lossy().into();
+    let natives_dir = Path::new(&config.game_dir)
+        .join("natives")
+        .to_string_lossy()
+        .into();
     let valuemap = HashMap::from([
         ("${natives_directory}", natives_dir),
         ("${launcher_name}", "my_launcher".into()),
@@ -168,15 +171,15 @@ fn test_replace_arguments() {
         ("${launcher_name}", "launcher".into()),
     ]);
     let args = Vec::from([
-        "start--${natives_directory}--end".into(), 
-        "${abababa}end".into(), 
-        "normal".into(), 
+        "start--${natives_directory}--end".into(),
+        "${abababa}end".into(),
+        "normal".into(),
     ]);
 
     let answer = Vec::from([
-        "start--native--end".to_string(), 
-        "${abababa}end".to_string(), 
-        "normal".to_string(), 
+        "start--native--end".to_string(),
+        "${abababa}end".to_string(),
+        "normal".to_string(),
     ]);
 
     let res = replace_arguments(args, valuemap);

@@ -116,7 +116,7 @@ pub enum InstallType {
     Client,
 }
 
-pub struct InstallSingleDescriptor {
+pub struct InstallDescript {
     pub url: String,
     pub sha1: String,
     pub save_dir: String,
@@ -124,4 +124,4 @@ pub struct InstallSingleDescriptor {
     pub r#type: InstallType,
 }
 
-pub type InstallDescriptors = VecDeque<InstallSingleDescriptor>;
+pub type InstallDescripts = VecDeque<InstallDescript>;

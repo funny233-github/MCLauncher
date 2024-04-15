@@ -1,19 +1,24 @@
 use crate::config::{
-    AssetIndex, AssetJson, InstallDescriptors, InstallSingleDescriptor, InstallType, RuntimeConfig,
+    AssetIndex, AssetJson, InstallDescript, InstallDescripts, InstallType, RuntimeConfig,
     VersionJsonLibraries, VersionManifestJson, VersionType,
 };
 use log::{debug, error, info};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
-use std::cmp::Ordering;
-use std::collections::VecDeque;
-use std::fs;
-use std::path::Path;
-use std::thread;
-use std::thread::JoinHandle;
+use std::sync::{Arc, Mutex};
+use std::{cmp::Ordering, collections::VecDeque, fs, path::Path, thread};
 
-const MAX_THREAD: usize = 32;
+const MAX_THREAD: usize = 24;
+
+#[cfg(target_os = "windows")]
+const OS: &str = "windows";
+
+#[cfg(target_os = "linux")]
+const OS: &str = "linux";
+
+#[cfg(target_os = "macos")]
+const OS: &str = "osx";
 
 trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &String) -> Ordering;
@@ -32,7 +37,7 @@ trait FileInstall {
 }
 
 trait Installer {
-    fn install(&mut self) -> anyhow::Result<()>;
+    fn install(self) -> anyhow::Result<()>;
 }
 
 impl DomainReplacer<String> for String {
@@ -64,7 +69,7 @@ where
     }
 }
 
-impl FileInstall for InstallSingleDescriptor {
+impl FileInstall for InstallDescript {
     fn install(&self) -> anyhow::Result<()> {
         let path = Path::new(&self.save_dir).join(&self.file_name);
         if path.path_exists() && Ordering::Equal == fs::read(&path).unwrap().sha1_cmp(&self.sha1) {
@@ -87,24 +92,30 @@ impl FileInstall for InstallSingleDescriptor {
     }
 }
 
-impl Installer for InstallDescriptors {
-    fn install(&mut self) -> anyhow::Result<()> {
-        while self.len() > 0 {
-            let mut handles: VecDeque<JoinHandle<()>> = VecDeque::new();
-            for _ in 0..MAX_THREAD {
-                let des = self.pop_back();
-                if let Some(_des) = des {
-                    let thr = thread::spawn(move || {
-                        if let Err(e) = _des.install() {
-                            error!("{:#?}", e);
-                        }
-                    });
-                    handles.push_back(thr);
+impl<T> Installer for VecDeque<T>
+where
+    T: FileInstall + std::marker::Send + 'static + std::marker::Sync,
+{
+    fn install(self) -> anyhow::Result<()> {
+        let descripts = Arc::new(Mutex::new(self));
+        let mut handles = vec![];
+        for _ in 0..MAX_THREAD {
+            let descripts_share = Arc::clone(&descripts);
+            let thr = thread::spawn(move || loop {
+                let descs;
+                if let Some(desc) = descripts_share.lock().unwrap().pop_back() {
+                    descs = desc;
+                } else {
+                    return;
                 }
-            }
-            for handle in handles {
-                handle.join().unwrap();
-            }
+                if let Err(e) = descs.install() {
+                    error!("{:#?}", e);
+                }
+            });
+            handles.push(thr);
+        }
+        for handle in handles {
+            handle.join().unwrap();
         }
         Ok(())
     }
@@ -113,17 +124,19 @@ impl Installer for InstallDescriptors {
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
     let version_json = get_version_json(config)?;
-    let version_dir = config.game_dir.clone() + "versions/" + config.game_version.as_ref() + "/";
-    let version_json_file = version_dir.clone() + config.game_version.as_ref() + ".json";
-    let native_dir = config.game_dir.clone() + "natives/";
+    let version_json_file = Path::new(&config.game_dir)
+        .join("versions")
+        .join(&config.game_version)
+        .join(config.game_version.clone() + ".json");
+    let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
-    fs::create_dir_all(version_dir).unwrap_or(());
+    fs::create_dir_all(version_json_file.parent().unwrap()).unwrap_or(());
     fs::write(
         version_json_file,
         serde_json::to_string_pretty(&version_json)?,
     )?;
 
-    let mut descripts = InstallDescriptors::new();
+    let mut descripts = InstallDescripts::new();
 
     descripts.append(&mut install_asset_index_and_get_assets_descript(
         config,
@@ -159,18 +172,17 @@ fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<byt
 fn get_libraries_and_native_descript(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallDescriptors> {
-    fs::create_dir_all(config.game_dir.clone() + "libraries/").unwrap();
+) -> anyhow::Result<InstallDescripts> {
     let libraries: VersionJsonLibraries =
         serde_json::from_value(version_json["libraries"].clone())?;
-    let descripts: InstallDescriptors = libraries
+    let descripts: InstallDescripts = libraries
         .iter()
         .filter(|obj| {
             let objs = &obj.rules.clone();
             if let Some(_objs) = objs {
                 let flag = _objs
                     .iter()
-                    .find(|rules| rules.os.clone().unwrap_or_default()["name"] == "linux");
+                    .find(|rules| rules.os.clone().unwrap_or_default()["name"] == OS);
                 obj.downloads.classifiers == None && flag.clone() != None
             } else {
                 obj.downloads.classifiers == None
@@ -195,7 +207,7 @@ fn get_libraries_and_native_descript(
                 .to_string_lossy()
                 .as_ref()
                 .to_string();
-            InstallSingleDescriptor {
+            InstallDescript {
                 url,
                 sha1,
                 save_dir,
@@ -210,7 +222,7 @@ fn get_libraries_and_native_descript(
 fn get_client_descript(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallSingleDescriptor> {
+) -> anyhow::Result<InstallDescript> {
     let json_client = &version_json["downloads"]["client"];
     let url = json_client["url"].as_str().unwrap().to_string();
     let url = url.replace_domain(&config.mirror.client);
@@ -222,7 +234,7 @@ fn get_client_descript(
         .as_ref()
         .to_string();
     let file_name = config.game_version.clone() + ".jar";
-    Ok(InstallSingleDescriptor {
+    Ok(InstallDescript {
         url,
         sha1,
         save_dir,
@@ -231,7 +243,7 @@ fn get_client_descript(
     })
 }
 
-fn get_assets_descript(config: &RuntimeConfig, asset_json: AssetJson) -> InstallDescriptors {
+fn get_assets_descript(config: &RuntimeConfig, asset_json: AssetJson) -> InstallDescripts {
     asset_json
         .objects
         .into_iter()
@@ -246,7 +258,7 @@ fn get_assets_descript(config: &RuntimeConfig, asset_json: AssetJson) -> Install
                 .as_ref()
                 .to_string();
             let file_name = x.1.hash.clone();
-            InstallSingleDescriptor {
+            InstallDescript {
                 url,
                 sha1,
                 save_dir,
@@ -260,11 +272,13 @@ fn get_assets_descript(config: &RuntimeConfig, asset_json: AssetJson) -> Install
 fn install_asset_index_and_get_assets_descript(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallDescriptors> {
+) -> anyhow::Result<InstallDescripts> {
     let ass: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
     let url = ass.url.replace_domain(&config.mirror.version_manifest);
-    let asset_index_dir = config.game_dir.clone() + "assets/indexes/";
-    let asset_index_file = asset_index_dir.clone() + &ass.id + ".json";
+    let asset_index_file = Path::new(&config.game_dir)
+        .join("assets")
+        .join("indexes")
+        .join(ass.id.clone() + ".json");
 
     info!("get {}", &url);
     let client = reqwest::blocking::Client::new();
@@ -275,7 +289,7 @@ fn install_asset_index_and_get_assets_descript(
             .send()?
             .text()?;
         if let Ordering::Equal = data.sha1_cmp(&ass.sha1) {
-            fs::create_dir_all(asset_index_dir)?;
+            fs::create_dir_all(asset_index_file.parent().unwrap())?;
             fs::write(asset_index_file, &data)?;
             info!("get assets json");
             let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
