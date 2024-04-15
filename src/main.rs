@@ -13,17 +13,22 @@ struct Args {
     command: Command,
 }
 
+/// A simple Minecraft launcher
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Init a new instance
     Init,
 
+    /// List Minecraft versions from manifest
     #[command(subcommand)]
     List(VersionType),
 
+    /// Change user name
     Account {
         name: String,
     },
 
+    /// Build a Minecraft instance
     Build {
         version: Option<String>,
     },
