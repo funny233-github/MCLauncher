@@ -18,6 +18,7 @@ pub struct RuntimeConfig {
     pub window_height: u32,
     pub user_name: String,
     pub user_type: String,
+    pub user_uuid: String,
     pub game_dir: String,
     pub game_version: String,
     pub java_path: String,

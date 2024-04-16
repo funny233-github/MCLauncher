@@ -2,7 +2,6 @@ use crate::config::{RuntimeConfig, VersionJsonLibraries};
 use log::debug;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
-use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
 const CLASSPATH_SEPARATOR:&str = ";";
@@ -50,7 +49,6 @@ fn replace_arguments_from_game(
 ) -> anyhow::Result<Vec<String>> {
     let js = config.version_json_provider()?;
     let game_directory = config.game_dir.clone();
-    let auth_uuid = Uuid::new_v4().into();
     let assets_root: String = Path::new(&config.game_dir)
         .join("assets")
         .to_string_lossy()
@@ -62,7 +60,7 @@ fn replace_arguments_from_game(
         ("${game_directory}", game_directory),
         ("${assets_root}", assets_root),
         ("${assets_index_name}", assets_index_name),
-        ("${auth_uuid}", auth_uuid),
+        ("${auth_uuid}", config.user_uuid.clone()),
         ("${user_type}", config.user_type.clone()),
         ("${version_type}", "release".into()),
     ]);

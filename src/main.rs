@@ -5,6 +5,7 @@ use launcher::runtime::gameruntime;
 use log::error;
 use std::fs;
 use std::path::Path;
+use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -54,6 +55,7 @@ fn handle_args() -> anyhow::Result<()> {
         window_height: 480,
         user_name: "no_name".into(),
         user_type: "offline".into(),
+        user_uuid: Uuid::new_v4().into(),
         game_dir: std::env::current_dir()?.to_str().unwrap().to_string() + "/",
         game_version: "no_game_version".into(),
         java_path: "java".into(),
@@ -79,6 +81,8 @@ fn handle_args() -> anyhow::Result<()> {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.user_name = _name;
+            config.user_uuid = Uuid::new_v4().into();
+            config.user_type = "offline".into();
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
         }
         Command::Build { version: None } => {
