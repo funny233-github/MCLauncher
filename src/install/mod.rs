@@ -33,7 +33,7 @@ trait PathExist {
 }
 
 trait FileInstall {
-    fn install(&self) -> anyhow::Result<()>;
+    fn install(&self, task_len:usize, task_done:&Arc<Mutex<usize>>) -> anyhow::Result<()>;
 }
 
 trait Installer {
@@ -70,23 +70,27 @@ where
 }
 
 impl FileInstall for InstallDescript {
-    fn install(&self) -> anyhow::Result<()> {
+    fn install(&self, task_len:usize, task_done:&Arc<Mutex<usize>>) -> anyhow::Result<()> {
         let path = Path::new(&self.save_dir).join(&self.file_name);
         if path.path_exists() && Ordering::Equal == fs::read(&path).unwrap().sha1_cmp(&self.sha1) {
+            let mut task_done = task_done.lock().unwrap();
+            *task_done += 1;
             match &self.r#type {
-                InstallType::Asset => println!("[CHECK] Asset {} installed", self.sha1),
-                InstallType::Library => println!("[CHECK] library {} installed", self.file_name),
-                InstallType::Client => println!("[CHECK] client installed"),
+                InstallType::Asset => println!("{}/{} [CHECK] Asset {} installed",task_done, task_len, self.sha1),
+                InstallType::Library => println!("{}/{} [CHECK] library {} installed",task_done, task_len, self.file_name),
+                InstallType::Client => println!("{}/{} [CHECK] client installed",task_done, task_len),
             }
             return Ok(());
         }
         let data = install_bytes_with_timeout(&self.url, &self.sha1)?;
         fs::create_dir_all(&self.save_dir).unwrap();
         fs::write(path, data).unwrap();
+        let mut task_done = task_done.lock().unwrap();
+        *task_done += 1;
         match &self.r#type {
-            InstallType::Asset => println!("Asset {} installed", self.sha1),
-            InstallType::Library => println!("library {} installed", self.file_name),
-            InstallType::Client => println!("client installed"),
+            InstallType::Asset => println!("{}/{} Asset {} installed",task_done, task_len, self.sha1),
+            InstallType::Library => println!("{}/{} library {} installed",task_done, task_len, self.file_name),
+            InstallType::Client => println!("{}/{} client installed",task_done, task_len),
         }
         Ok(())
     }
@@ -97,10 +101,13 @@ where
     T: FileInstall + std::marker::Send + 'static + std::marker::Sync,
 {
     fn install(self) -> anyhow::Result<()> {
+        let task_len = self.len();
+        let task_done = Arc::new(Mutex::new(0usize));
         let descripts = Arc::new(Mutex::new(self));
         let mut handles = vec![];
         for _ in 0..MAX_THREAD {
             let descripts_share = Arc::clone(&descripts);
+            let task_done_share = Arc::clone(&task_done);
             let thr = thread::spawn(move || loop {
                 let descs;
                 if let Some(desc) = descripts_share.lock().unwrap().pop_back() {
@@ -108,8 +115,9 @@ where
                 } else {
                     return;
                 }
-                if let Err(e) = descs.install() {
-                    error!("{:#?}", e);
+                if let Err(_) = descs.install(task_len,&task_done_share) {
+                    error!("Please rebuild to get Miecraft completely!");
+                    panic!();
                 }
             });
             handles.push(thr);
