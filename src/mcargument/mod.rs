@@ -1,16 +1,21 @@
 use crate::config::{RuntimeConfig, VersionJsonLibraries};
-use log::debug;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 
 #[cfg(target_os = "windows")]
 const CLASSPATH_SEPARATOR: &str = ";";
+#[cfg(target_os = "windows")]
+const TARGET_OS: &str = "windows";
 
 #[cfg(target_os = "linux")]
 const CLASSPATH_SEPARATOR: &str = ":";
+#[cfg(target_os = "linux")]
+const TARGET_OS: &str = "linux";
 
 #[cfg(target_os = "macos")]
 const CLASSPATH_SEPARATOR: &str = ":";
+#[cfg(target_os = "macos")]
+const TARGET_OS: &str = "osx";
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
@@ -48,7 +53,6 @@ fn replace_arguments_from_game(
     config: &RuntimeConfig,
 ) -> anyhow::Result<Vec<String>> {
     let js = config.version_json_provider()?;
-    let game_directory = config.game_dir.clone();
     let assets_root: String = Path::new(&config.game_dir)
         .join("assets")
         .to_string_lossy()
@@ -57,7 +61,7 @@ fn replace_arguments_from_game(
     let valuemap = HashMap::from([
         ("${auth_player_name}", config.user_name.clone()),
         ("${version_name}", config.game_version.clone()),
-        ("${game_directory}", game_directory),
+        ("${game_directory}", config.game_dir.clone()),
         ("${assets_root}", assets_root),
         ("${assets_index_name}", assets_index_name),
         ("${auth_uuid}", config.user_uuid.clone()),
@@ -72,8 +76,7 @@ fn replace_arguments_from_game(
 
 impl RuntimeConfig {
     pub fn args_provider(&self) -> anyhow::Result<Vec<String>> {
-        let mut args = Vec::new();
-        let mut jvm_basic_arg = vec![
+        let mut args = vec![
             format!("-Xmx{}m", self.max_memory_size),
             format!("-Xmn256m"),
             format!("-XX:+UseG1GC"),
@@ -84,7 +87,6 @@ impl RuntimeConfig {
             format!("-Dlog4j2.formatMsgNoLookups=true"),
             format!("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump"),
         ];
-        args.append(&mut jvm_basic_arg);
 
         let js = self.version_json_provider()?;
         let arguments = &mut js["arguments"].clone();
@@ -100,22 +102,18 @@ impl RuntimeConfig {
         let mut game_args = replace_arguments_from_game(game_args, self)?;
         args.append(&mut game_args);
 
-        debug!("{:#?}", args);
         Ok(args)
     }
 
     fn get_normal_args_from(&self, js: &mut serde_json::Value) -> anyhow::Result<Vec<String>> {
         //TODO parse arg which contain "rules"
-        let mut args = Vec::new();
-        let mut jvm_normal_arg: Vec<String> = js
+        Ok(js
             .as_array()
             .unwrap()
             .iter()
             .filter(|x| x.is_string())
             .map(|x| x.as_str().unwrap().into())
-            .collect();
-        args.append(&mut jvm_normal_arg);
-        Ok(args)
+            .collect())
     }
 
     fn get_classpaths(&self) -> anyhow::Result<String> {
@@ -134,8 +132,8 @@ impl RuntimeConfig {
                 if let Some(_objs) = objs {
                     let flag = _objs
                         .iter()
-                        .find(|rules| rules.os.clone().unwrap_or_default()["name"] == "linux");
-                    obj.downloads.classifiers.is_none() && flag.clone().is_some()
+                        .find(|rules| rules.os.clone().unwrap_or_default()["name"] == TARGET_OS);
+                    obj.downloads.classifiers.is_none() && flag.is_some()
                 } else {
                     obj.downloads.classifiers.is_none()
                 }
@@ -156,8 +154,7 @@ impl RuntimeConfig {
             .to_string_lossy()
             .into();
         paths.push(client_path);
-        let res = paths.join(CLASSPATH_SEPARATOR);
-        Ok(res)
+        Ok(paths.join(CLASSPATH_SEPARATOR))
     }
 
     fn version_json_provider(&self) -> anyhow::Result<serde_json::Value> {
@@ -166,8 +163,7 @@ impl RuntimeConfig {
             .join(&self.game_version)
             .join(self.game_version.clone() + ".json");
         let jsfile = fs::read_to_string(jsfile_path)?;
-        let js = serde_json::from_str(&jsfile)?;
-        Ok(js)
+        Ok(serde_json::from_str(&jsfile)?)
     }
 }
 

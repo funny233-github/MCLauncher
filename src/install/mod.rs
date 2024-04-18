@@ -2,7 +2,7 @@ use crate::config::{
     AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
     VersionType,
 };
-use log::{debug, error};
+use log::error;
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
@@ -91,13 +91,12 @@ fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::B
             .get(url)
             .header(header::USER_AGENT, "mc_launcher")
             .send();
-        if let Ok(_send) = send {
-            if let Ok(data) = _send.bytes() {
-                if data.sha1_cmp(sha1).is_eq() {
-                    return Ok(data);
-                }
-            };
-        }
+        let data = send.and_then(|x| x.bytes());
+        if let Ok(_data) = data {
+            if _data.sha1_cmp(sha1).is_eq() {
+                return Ok(_data);
+            }
+        };
         error!("install fail, then retry");
         thread::sleep(std::time::Duration::from_millis(5));
     }
@@ -322,7 +321,6 @@ impl VersionManifestJson {
         let mut url = config.mirror.version_manifest.clone();
         url += "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
-        debug!("{}", &url);
         let data: VersionManifestJson = client
             .get(&url)
             .header(header::USER_AGENT, "mc_launcher")
