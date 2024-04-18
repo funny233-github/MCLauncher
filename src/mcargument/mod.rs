@@ -4,13 +4,13 @@ use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 
 #[cfg(target_os = "windows")]
-const CLASSPATH_SEPARATOR:&str = ";";
+const CLASSPATH_SEPARATOR: &str = ";";
 
 #[cfg(target_os = "linux")]
-const CLASSPATH_SEPARATOR:&str = ":";
+const CLASSPATH_SEPARATOR: &str = ":";
 
 #[cfg(target_os = "macos")]
-const CLASSPATH_SEPARATOR:&str = ":";
+const CLASSPATH_SEPARATOR: &str = ":";
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();

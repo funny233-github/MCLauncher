@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
 // runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -116,13 +116,3 @@ pub enum InstallType {
     Library,
     Client,
 }
-
-pub struct InstallDescript {
-    pub url: String,
-    pub sha1: String,
-    pub save_dir: String,
-    pub file_name: String,
-    pub r#type: InstallType,
-}
-
-pub type InstallDescripts = VecDeque<InstallDescript>;

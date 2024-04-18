@@ -1,13 +1,19 @@
 use crate::config::{
-    AssetIndex, AssetJson, InstallDescript, InstallDescripts, InstallType, RuntimeConfig,
-    VersionJsonLibraries, VersionManifestJson, VersionType,
+    AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
+    VersionType,
 };
-use log::{debug, error, info};
+use log::{debug, error};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
 use std::sync::{Arc, Mutex};
-use std::{cmp::Ordering, collections::VecDeque, fs, path::Path, thread};
+use std::{
+    cmp::Ordering,
+    collections::VecDeque,
+    fs,
+    path::{Path, PathBuf},
+    thread,
+};
 
 const MAX_THREAD: usize = 24;
 
@@ -33,7 +39,7 @@ trait PathExist {
 }
 
 trait FileInstall {
-    fn install(&self, task_len:usize, task_done:&Arc<Mutex<usize>>) -> anyhow::Result<()>;
+    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()>;
 }
 
 trait Installer {
@@ -69,28 +75,60 @@ where
     }
 }
 
-impl FileInstall for InstallDescript {
-    fn install(&self, task_len:usize, task_done:&Arc<Mutex<usize>>) -> anyhow::Result<()> {
-        let path = Path::new(&self.save_dir).join(&self.file_name);
-        if path.path_exists() && Ordering::Equal == fs::read(&path).unwrap().sha1_cmp(&self.sha1) {
-            let mut task_done = task_done.lock().unwrap();
-            *task_done += 1;
-            match &self.r#type {
-                InstallType::Asset => println!("{}/{} [CHECK] Asset {} installed",task_done, task_len, self.sha1),
-                InstallType::Library => println!("{}/{} [CHECK] library {} installed",task_done, task_len, self.file_name),
-                InstallType::Client => println!("{}/{} [CHECK] client installed",task_done, task_len),
-            }
-            return Ok(());
+struct InstallTask {
+    pub url: String,
+    pub sha1: String,
+    pub save_file: PathBuf,
+    pub r#type: InstallType,
+}
+
+type TaskPool = VecDeque<InstallTask>;
+
+fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
+    let client = reqwest::blocking::Client::new();
+    for _ in 0..5 {
+        let send = client
+            .get(url)
+            .header(header::USER_AGENT, "mc_launcher")
+            .send();
+        if let Ok(_send) = send {
+            if let Ok(data) = _send.bytes() {
+                if data.sha1_cmp(sha1).is_eq() {
+                    return Ok(data);
+                }
+            };
         }
-        let data = install_bytes_with_timeout(&self.url, &self.sha1)?;
-        fs::create_dir_all(&self.save_dir).unwrap();
-        fs::write(path, data).unwrap();
+        error!("install fail, then retry");
+        thread::sleep(std::time::Duration::from_millis(5));
+    }
+    Err(anyhow::anyhow!("download {url} fail"))
+}
+
+impl FileInstall for InstallTask {
+    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()> {
+        if !(self.save_file.path_exists()
+            && fs::read(&self.save_file)
+                .unwrap()
+                .sha1_cmp(&self.sha1)
+                .is_eq())
+        {
+            let data = fetch_bytes_with_timeout(&self.url, &self.sha1)?;
+            fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
+            fs::write(&self.save_file, data).unwrap();
+        }
         let mut task_done = task_done.lock().unwrap();
         *task_done += 1;
         match &self.r#type {
-            InstallType::Asset => println!("{}/{} Asset {} installed",task_done, task_len, self.sha1),
-            InstallType::Library => println!("{}/{} library {} installed",task_done, task_len, self.file_name),
-            InstallType::Client => println!("{}/{} client installed",task_done, task_len),
+            InstallType::Asset => {
+                println!("{}/{} Asset {} installed", task_done, task_len, self.sha1)
+            }
+            InstallType::Library => println!(
+                "{}/{} library {:?} installed",
+                task_done,
+                task_len,
+                self.save_file.file_name().unwrap()
+            ),
+            InstallType::Client => println!("{}/{} client installed", task_done, task_len),
         }
         Ok(())
     }
@@ -115,7 +153,8 @@ where
                 } else {
                     return;
                 }
-                if descs.install(task_len,&task_done_share).is_err() {
+                if let Err(e) = descs.install(task_len, &task_done_share) {
+                    error!("{:#?}", e);
                     error!("Please rebuild to get Miecraft completely!");
                     panic!();
                 }
@@ -143,47 +182,25 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         version_json_file,
         serde_json::to_string_pretty(&version_json)?,
     )?;
+    let asset_index = install_asset_index(config, &version_json)?;
 
-    let mut descripts = InstallDescripts::new();
+    let mut descripts = TaskPool::new();
 
-    descripts.append(&mut install_asset_index_and_get_assets_descript(
-        config,
-        &version_json,
-    )?);
-    descripts.append(&mut get_libraries_and_native_descript(
-        config,
-        &version_json,
-    )?);
-    descripts.push_back(get_client_descript(config, &version_json)?);
+    descripts.append(&mut assets_installtask(config, asset_index));
+    descripts.append(&mut libraries_installtask(config, &version_json)?);
+    descripts.push_back(client_installtask(config, &version_json)?);
     descripts.install()?;
 
     Ok(())
 }
 
-fn install_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
-    let client = reqwest::blocking::Client::new();
-    for _ in 0..3 {
-        let send = client
-            .get(url)
-            .header(header::USER_AGENT, "mc_launcher")
-            .send();
-        if let Ok(_send) = send {
-            let data = _send.bytes()?;
-            if let Ordering::Equal = data.sha1_cmp(sha1) {
-                return Ok(data);
-            }
-        }
-    }
-    Err(anyhow::anyhow!("download {url} fail"))
-}
-
-fn get_libraries_and_native_descript(
+fn libraries_installtask(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallDescripts> {
+) -> anyhow::Result<TaskPool> {
     let libraries: VersionJsonLibraries =
         serde_json::from_value(version_json["libraries"].clone())?;
-    let descripts: InstallDescripts = libraries
+    let descripts: TaskPool = libraries
         .iter()
         .filter(|obj| {
             let objs = &obj.rules.clone();
@@ -198,28 +215,12 @@ fn get_libraries_and_native_descript(
         })
         .map(|x| {
             let artifact_path = x.downloads.artifact.path.clone();
-            let url = config.mirror.libraries.clone() + &artifact_path;
-            let sha1 = x.downloads.artifact.sha1.clone();
-            let path = Path::new(&config.game_dir)
-                .join("libraries")
-                .join(artifact_path);
-            let save_dir = path
-                .parent()
-                .unwrap()
-                .to_string_lossy()
-                .as_ref()
-                .to_string();
-            let file_name = path
-                .file_name()
-                .unwrap()
-                .to_string_lossy()
-                .as_ref()
-                .to_string();
-            InstallDescript {
-                url,
-                sha1,
-                save_dir,
-                file_name,
+            InstallTask {
+                url: config.mirror.libraries.clone() + &artifact_path,
+                sha1: x.downloads.artifact.sha1.clone(),
+                save_file: Path::new(&config.game_dir)
+                    .join("libraries")
+                    .join(&artifact_path),
                 r#type: InstallType::Library,
             }
         })
@@ -227,85 +228,68 @@ fn get_libraries_and_native_descript(
     Ok(descripts)
 }
 
-fn get_client_descript(
+fn client_installtask(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallDescript> {
+) -> anyhow::Result<InstallTask> {
     let json_client = &version_json["downloads"]["client"];
-    let url = json_client["url"].as_str().unwrap().to_string();
-    let url = url.replace_domain(&config.mirror.client);
-    let sha1 = json_client["sha1"].as_str().unwrap().to_string();
-    let save_dir = Path::new(&config.game_dir)
-        .join("versions/")
-        .join(config.game_version.clone() + "/")
-        .to_string_lossy()
-        .as_ref()
-        .to_string();
-    let file_name = config.game_version.clone() + ".jar";
-    Ok(InstallDescript {
-        url,
-        sha1,
-        save_dir,
-        file_name,
+    Ok(InstallTask {
+        url: json_client["url"]
+            .as_str()
+            .unwrap()
+            .to_string()
+            .replace_domain(&config.mirror.client),
+        sha1: json_client["sha1"].as_str().unwrap().to_string(),
+        save_file: Path::new(&config.game_dir)
+            .join("versions")
+            .join(&config.game_version)
+            .join(config.game_version.clone() + ".jar"),
         r#type: InstallType::Client,
     })
 }
 
-fn get_assets_descript(config: &RuntimeConfig, asset_json: AssetJson) -> InstallDescripts {
+fn assets_installtask(config: &RuntimeConfig, asset_json: AssetJson) -> TaskPool {
     asset_json
         .objects
         .into_iter()
-        .map(|x| {
-            let url = config.mirror.assets.clone() + &x.1.hash[0..2] + "/" + &x.1.hash;
-            let sha1 = x.1.hash.clone();
-            let save_dir = Path::new(&config.game_dir)
-                .join("assets/")
-                .join("objects/")
+        .map(|x| InstallTask {
+            url: config.mirror.assets.clone() + &x.1.hash[0..2] + "/" + &x.1.hash,
+            sha1: x.1.hash.clone(),
+            save_file: Path::new(&config.game_dir)
+                .join("assets")
+                .join("objects")
                 .join(&x.1.hash[0..2])
-                .to_string_lossy()
-                .as_ref()
-                .to_string();
-            let file_name = x.1.hash.clone();
-            InstallDescript {
-                url,
-                sha1,
-                save_dir,
-                file_name,
-                r#type: InstallType::Asset,
-            }
+                .join(x.1.hash.clone()),
+            r#type: InstallType::Asset,
         })
         .collect()
 }
 
-fn install_asset_index_and_get_assets_descript(
+fn install_asset_index(
     config: &RuntimeConfig,
     version_json: &serde_json::Value,
-) -> anyhow::Result<InstallDescripts> {
-    let ass: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
-    let url = ass.url.replace_domain(&config.mirror.version_manifest);
+) -> anyhow::Result<AssetJson> {
+    let asset_index: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
+    let url = asset_index
+        .url
+        .replace_domain(&config.mirror.version_manifest);
     let asset_index_file = Path::new(&config.game_dir)
         .join("assets")
         .join("indexes")
-        .join(ass.id.clone() + ".json");
+        .join(asset_index.id.clone() + ".json");
 
-    info!("get {}", &url);
     let client = reqwest::blocking::Client::new();
-    for _ in 0..=3 {
-        let data = client
-            .get(&url)
-            .header(header::USER_AGENT, "mc_launcher")
-            .send()?
-            .text()?;
-        if let Ordering::Equal = data.sha1_cmp(&ass.sha1) {
-            fs::create_dir_all(asset_index_file.parent().unwrap())?;
-            fs::write(asset_index_file, &data)?;
-            info!("get assets json");
-            let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
-            let descripts = get_assets_descript(config, datajson);
-            return Ok(descripts);
-        };
-        error!("get assets json fail, then retry");
-    }
+    let data = client
+        .get(url)
+        .header(header::USER_AGENT, "mc_launcher")
+        .send()?
+        .text()?;
+    if data.sha1_cmp(&asset_index.sha1).is_eq() {
+        fs::create_dir_all(asset_index_file.parent().unwrap())?;
+        fs::write(asset_index_file, &data)?;
+        let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
+        return Ok(datajson);
+    };
     Err(anyhow::anyhow!("can't get assets json"))
 }
 
@@ -323,9 +307,8 @@ pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Va
     let url = url.replace_domain(&config.mirror.version_manifest);
 
     let client = reqwest::blocking::Client::new();
-    debug!("get {}", &url);
     let data = client
-        .get(&url)
+        .get(url)
         .header(header::USER_AGENT, "mc_launcher")
         .send()?
         .text()?;
