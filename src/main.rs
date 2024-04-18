@@ -43,7 +43,7 @@ enum Command {
 #[derive(Subcommand, Debug)]
 enum Mirrors {
     Official,
-    BMCLAPI,
+    Bmclapi,
 }
 
 fn handle_args() -> anyhow::Result<()> {
@@ -118,7 +118,7 @@ fn handle_args() -> anyhow::Result<()> {
             println!("Set official mirror");
         }
 
-        Command::SetMirror(Mirrors::BMCLAPI) => {
+        Command::SetMirror(Mirrors::Bmclapi) => {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
             config.mirror = MCMirror {

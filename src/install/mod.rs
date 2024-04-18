@@ -21,11 +21,11 @@ const OS: &str = "linux";
 const OS: &str = "osx";
 
 trait Sha1Compare {
-    fn sha1_cmp(&self, sha1code: &String) -> Ordering;
+    fn sha1_cmp(&self, sha1code: &str) -> Ordering;
 }
 
 trait DomainReplacer<T> {
-    fn replace_domain(&self, domain: &String) -> T;
+    fn replace_domain(&self, domain: &str) -> T;
 }
 
 trait PathExist {
@@ -41,7 +41,7 @@ trait Installer {
 }
 
 impl DomainReplacer<String> for String {
-    fn replace_domain(&self, domain: &String) -> String {
+    fn replace_domain(&self, domain: &str) -> String {
         let regex = Regex::new(r"(?<replace>https://\S+?/)").unwrap();
         let replace = regex.captures(self.as_str()).unwrap();
         self.replace(&replace["replace"], domain)
@@ -52,11 +52,11 @@ impl<T> Sha1Compare for T
 where
     T: AsRef<[u8]>,
 {
-    fn sha1_cmp(&self, sha1code: &String) -> Ordering {
+    fn sha1_cmp(&self, sha1code: &str) -> Ordering {
         let mut hasher = Sha1::new();
         hasher.update(self);
         let sha1 = hasher.finalize();
-        hex::encode(sha1).cmp(sha1code)
+        hex::encode(sha1).cmp(&sha1code.into())
     }
 }
 
@@ -115,7 +115,7 @@ where
                 } else {
                     return;
                 }
-                if let Err(_) = descs.install(task_len,&task_done_share) {
+                if descs.install(task_len,&task_done_share).is_err() {
                     error!("Please rebuild to get Miecraft completely!");
                     panic!();
                 }
@@ -160,7 +160,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<bytes::Bytes> {
+fn install_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
     for _ in 0..3 {
         let send = client
@@ -174,7 +174,7 @@ fn install_bytes_with_timeout(url: &String, sha1: &String) -> anyhow::Result<byt
             }
         }
     }
-    return Err(anyhow::anyhow!("download {url} fail"));
+    Err(anyhow::anyhow!("download {url} fail"))
 }
 
 fn get_libraries_and_native_descript(
@@ -191,9 +191,9 @@ fn get_libraries_and_native_descript(
                 let flag = _objs
                     .iter()
                     .find(|rules| rules.os.clone().unwrap_or_default()["name"] == OS);
-                obj.downloads.classifiers == None && flag.clone() != None
+                obj.downloads.classifiers.is_none() && flag.clone().is_some()
             } else {
-                obj.downloads.classifiers == None
+                obj.downloads.classifiers.is_none()
             }
         })
         .map(|x| {
@@ -306,7 +306,7 @@ fn install_asset_index_and_get_assets_descript(
         };
         error!("get assets json fail, then retry");
     }
-    return Err(anyhow::anyhow!("can't get assets json"));
+    Err(anyhow::anyhow!("can't get assets json"))
 }
 
 pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Value> {
@@ -330,7 +330,7 @@ pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Va
         .send()?
         .text()?;
 
-    let data: serde_json::Value = serde_json::from_str(&data.as_str())?;
+    let data: serde_json::Value = serde_json::from_str(data.as_str())?;
     Ok(data)
 }
 
@@ -373,16 +373,17 @@ fn test_get_manifest() {
         max_memory_size: 5000,
         window_weight: 854,
         window_height: 480,
-        user_name: "no_name".to_string(),
-        user_type: "offline".to_string(),
-        game_dir: "somepath".to_string(),
-        game_version: "1.20.4".to_string(),
-        java_path: "/usr/bin/java".to_string(),
+        user_name: "no_name".into(),
+        user_type: "offline".into(),
+        user_uuid: "...".into(),
+        game_dir: "somepath".into(),
+        game_version: "1.20.4".into(),
+        java_path: "/usr/bin/java".into(),
         mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
-            assets: "...".to_string(),
-            client: "...".to_string(),
-            libraries: "...".to_string(),
+            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
+            assets: "...".into(),
+            client: "...".into(),
+            libraries: "...".into(),
         },
     };
     let _ = VersionManifestJson::new(&config).unwrap();
@@ -394,16 +395,17 @@ fn test_get_version_json() {
         max_memory_size: 5000,
         window_weight: 854,
         window_height: 480,
-        user_name: "no_name".to_string(),
-        user_type: "offline".to_string(),
-        game_dir: "somepath".to_string(),
-        game_version: "1.20.4".to_string(),
-        java_path: "/usr/bin/java".to_string(),
+        user_name: "no_name".into(),
+        user_uuid: "...".into(),
+        user_type: "offline".into(),
+        game_dir: "somepath".into(),
+        game_version: "1.20.4".into(),
+        java_path: "/usr/bin/java".into(),
         mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
-            assets: "...".to_string(),
-            client: "...".to_string(),
-            libraries: "...".to_string(),
+            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
+            assets: "...".into(),
+            client: "...".into(),
+            libraries: "...".into(),
         },
     };
     let _ = get_version_json(&config).unwrap();
@@ -415,16 +417,17 @@ fn test_get_version_json_libraries() {
         max_memory_size: 5000,
         window_weight: 854,
         window_height: 480,
-        user_name: "no_name".to_string(),
-        user_type: "offline".to_string(),
-        game_dir: "somepath".to_string(),
-        game_version: "1.20.4".to_string(),
-        java_path: "/usr/bin/java".to_string(),
+        user_name: "no_name".into(),
+        user_type: "offline".into(),
+        user_uuid: "...".into(),
+        game_dir: "somepath".into(),
+        game_version: "1.20.4".into(),
+        java_path: "/usr/bin/java".into(),
         mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".to_string(),
-            assets: "...".to_string(),
-            client: "...".to_string(),
-            libraries: "...".to_string(),
+            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
+            assets: "...".into(),
+            client: "...".into(),
+            libraries: "...".into(),
         },
     };
     let version_json = get_version_json(&config).unwrap();

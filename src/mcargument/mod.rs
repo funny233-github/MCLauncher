@@ -135,9 +135,9 @@ impl RuntimeConfig {
                     let flag = _objs
                         .iter()
                         .find(|rules| rules.os.clone().unwrap_or_default()["name"] == "linux");
-                    obj.downloads.classifiers == None && flag.clone() != None
+                    obj.downloads.classifiers.is_none() && flag.clone().is_some()
                 } else {
-                    obj.downloads.classifiers == None
+                    obj.downloads.classifiers.is_none()
                 }
             })
             .map(|x| {
