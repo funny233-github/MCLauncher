@@ -29,8 +29,8 @@ enum Command {
         name: String,
     },
 
-    /// Build a Minecraft instance
-    Build {
+    /// Install Minecraft
+    Install {
         version: Option<String>,
     },
 
@@ -85,12 +85,12 @@ fn handle_args() -> anyhow::Result<()> {
             config.user_type = "offline".into();
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
         }
-        Command::Build { version: None } => {
+        Command::Install { version: None } => {
             let config = fs::read_to_string("config.toml")?;
             let config: RuntimeConfig = toml::from_str(&config)?;
             install_mc(&config)?;
         }
-        Command::Build {
+        Command::Install {
             version: Some(_version),
         } => {
             let config = fs::read_to_string("config.toml")?;
