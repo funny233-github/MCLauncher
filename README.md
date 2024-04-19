@@ -9,3 +9,6 @@ Type `Launcher list <version type>` to list versions.
 Type `Launcher set-mirror <mirror>` to set mirror.
 Type `Launcher install <version>` to install minecraft.
 You can type `Launcher help` for more information.
+
+# Build
+Assume you have cargo then `cargo install --path .`
