@@ -169,7 +169,7 @@ where
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
-    let version_json = get_version_json(config)?;
+    let version_json = get_version_json(&config.game_version,&config.mirror.version_manifest)?;
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
@@ -181,20 +181,38 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         version_json_file,
         serde_json::to_string_pretty(&version_json)?,
     )?;
-    let asset_index = install_asset_index(config, &version_json)?;
 
     let mut descripts = TaskPool::new();
 
-    descripts.append(&mut assets_installtask(config, asset_index));
-    descripts.append(&mut libraries_installtask(config, &version_json)?);
-    descripts.push_back(client_installtask(config, &version_json)?);
+    let game_dir = &config.game_dir;
+    let game_version = &config.game_version;
+
+    let asset_index =
+        install_asset_index(game_dir, &config.mirror.version_manifest, &version_json)?;
+    descripts.append(&mut assets_installtask(
+        game_dir,
+        &config.mirror.assets,
+        asset_index,
+    ));
+    descripts.append(&mut libraries_installtask(
+        game_dir,
+        &config.mirror.libraries,
+        &version_json,
+    )?);
+    descripts.push_back(client_installtask(
+        game_dir,
+        game_version,
+        &config.mirror.client,
+        &version_json,
+    )?);
     descripts.install()?;
 
     Ok(())
 }
 
 fn libraries_installtask(
-    config: &RuntimeConfig,
+    game_dir: &str,
+    libraries_mirror: &str,
     version_json: &serde_json::Value,
 ) -> anyhow::Result<TaskPool> {
     let libraries: VersionJsonLibraries =
@@ -215,11 +233,9 @@ fn libraries_installtask(
         .map(|x| {
             let artifact_path = x.downloads.artifact.path.clone();
             InstallTask {
-                url: config.mirror.libraries.clone() + &artifact_path,
+                url: libraries_mirror.to_owned() + &artifact_path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(&config.game_dir)
-                    .join("libraries")
-                    .join(&artifact_path),
+                save_file: Path::new(game_dir).join("libraries").join(&artifact_path),
                 r#type: InstallType::Library,
             }
         })
@@ -228,7 +244,9 @@ fn libraries_installtask(
 }
 
 fn client_installtask(
-    config: &RuntimeConfig,
+    game_dir: &str,
+    game_version: &str,
+    client_mirror: &str,
     version_json: &serde_json::Value,
 ) -> anyhow::Result<InstallTask> {
     let json_client = &version_json["downloads"]["client"];
@@ -237,24 +255,24 @@ fn client_installtask(
             .as_str()
             .unwrap()
             .to_string()
-            .replace_domain(&config.mirror.client),
+            .replace_domain(client_mirror),
         sha1: json_client["sha1"].as_str().unwrap().to_string(),
-        save_file: Path::new(&config.game_dir)
+        save_file: Path::new(game_dir)
             .join("versions")
-            .join(&config.game_version)
-            .join(config.game_version.clone() + ".jar"),
+            .join(game_version)
+            .join(game_version.to_owned() + ".jar"),
         r#type: InstallType::Client,
     })
 }
 
-fn assets_installtask(config: &RuntimeConfig, asset_json: AssetJson) -> TaskPool {
+fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: AssetJson) -> TaskPool {
     asset_json
         .objects
         .into_iter()
         .map(|x| InstallTask {
-            url: config.mirror.assets.clone() + &x.1.hash[0..2] + "/" + &x.1.hash,
+            url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
             sha1: x.1.hash.clone(),
-            save_file: Path::new(&config.game_dir)
+            save_file: Path::new(game_dir)
                 .join("assets")
                 .join("objects")
                 .join(&x.1.hash[0..2])
@@ -265,14 +283,13 @@ fn assets_installtask(config: &RuntimeConfig, asset_json: AssetJson) -> TaskPool
 }
 
 fn install_asset_index(
-    config: &RuntimeConfig,
+    game_dir: &str,
+    version_manifest_mirror: &str,
     version_json: &serde_json::Value,
 ) -> anyhow::Result<AssetJson> {
     let asset_index: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
-    let url = asset_index
-        .url
-        .replace_domain(&config.mirror.version_manifest);
-    let asset_index_file = Path::new(&config.game_dir)
+    let url = asset_index.url.replace_domain(version_manifest_mirror);
+    let asset_index_file = Path::new(game_dir)
         .join("assets")
         .join("indexes")
         .join(asset_index.id.clone() + ".json");
@@ -292,18 +309,17 @@ fn install_asset_index(
     Err(anyhow::anyhow!("can't get assets json"))
 }
 
-pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Value> {
-    let version = config.game_version.as_ref();
-    let manifest = VersionManifestJson::new(config)?;
+pub fn get_version_json(game_version: &str, version_manifest_mirror:&str) -> anyhow::Result<serde_json::Value> {
+    let manifest = VersionManifestJson::fetch(version_manifest_mirror)?;
     let url = manifest
         .versions
         .iter()
-        .find(|x| x.id == version)
+        .find(|x| x.id == game_version)
         .unwrap()
         .url
         .clone();
 
-    let url = url.replace_domain(&config.mirror.version_manifest);
+    let url = url.replace_domain(version_manifest_mirror);
 
     let client = reqwest::blocking::Client::new();
     let data = client
@@ -317,9 +333,8 @@ pub fn get_version_json(config: &RuntimeConfig) -> anyhow::Result<serde_json::Va
 }
 
 impl VersionManifestJson {
-    pub fn new(config: &RuntimeConfig) -> anyhow::Result<VersionManifestJson> {
-        let mut url = config.mirror.version_manifest.clone();
-        url += "mc/game/version_manifest.json";
+    pub fn fetch(version_manifest_mirror:&str) -> anyhow::Result<VersionManifestJson> {
+        let url = version_manifest_mirror.to_owned() + "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
         let data: VersionManifestJson = client
             .get(&url)
@@ -350,68 +365,22 @@ impl VersionManifestJson {
 
 #[test]
 fn test_get_manifest() {
-    let config = RuntimeConfig {
-        max_memory_size: 5000,
-        window_weight: 854,
-        window_height: 480,
-        user_name: "no_name".into(),
-        user_type: "offline".into(),
-        user_uuid: "...".into(),
-        game_dir: "somepath".into(),
-        game_version: "1.20.4".into(),
-        java_path: "/usr/bin/java".into(),
-        mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
-            assets: "...".into(),
-            client: "...".into(),
-            libraries: "...".into(),
-        },
-    };
-    let _ = VersionManifestJson::new(&config).unwrap();
+    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let _ = VersionManifestJson::fetch(version_manifest_mirror).unwrap();
 }
 
 #[test]
 fn test_get_version_json() {
-    let config = RuntimeConfig {
-        max_memory_size: 5000,
-        window_weight: 854,
-        window_height: 480,
-        user_name: "no_name".into(),
-        user_uuid: "...".into(),
-        user_type: "offline".into(),
-        game_dir: "somepath".into(),
-        game_version: "1.20.4".into(),
-        java_path: "/usr/bin/java".into(),
-        mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
-            assets: "...".into(),
-            client: "...".into(),
-            libraries: "...".into(),
-        },
-    };
-    let _ = get_version_json(&config).unwrap();
+    let game_version = "1.20.4";
+    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let _ = get_version_json(game_version,version_manifest_mirror).unwrap();
 }
 
 #[test]
 fn test_get_version_json_libraries() {
-    let config = RuntimeConfig {
-        max_memory_size: 5000,
-        window_weight: 854,
-        window_height: 480,
-        user_name: "no_name".into(),
-        user_type: "offline".into(),
-        user_uuid: "...".into(),
-        game_dir: "somepath".into(),
-        game_version: "1.20.4".into(),
-        java_path: "/usr/bin/java".into(),
-        mirror: crate::config::MCMirror {
-            version_manifest: "https://bmclapi2.bangbang93.com/".into(),
-            assets: "...".into(),
-            client: "...".into(),
-            libraries: "...".into(),
-        },
-    };
-    let version_json = get_version_json(&config).unwrap();
+    let game_version = "1.20.4";
+    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let version_json = get_version_json(game_version,version_manifest_mirror).unwrap();
     let _: VersionJsonLibraries =
         serde_json::from_value(version_json["libraries"].clone()).unwrap();
 }
