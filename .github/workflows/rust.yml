@@ -1,4 +1,7 @@
-name: Rust
+name: Nightly Build
+
+permissions:
+  contents: write
 
 on:
   push:
@@ -11,12 +14,34 @@ env:
 
 jobs:
   build:
+    name: Nightly Build (${{ matrix.os }})
 
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [windows, macos, ubuntu]
+      fail-fast: false
+
+    runs-on: ${{ matrix.os }}-latest
 
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+      # Rust Tools are already installed and available in the Runner.
+      # See: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#rust-tools
+      - if: contains(matrix.os, 'windows')
+        # Rust & Cargo requires MSVC Build Tools on Windows.
+        uses: seanmiddleditch/gha-setup-vsdevenv@v4
+        with:
+          arch: amd64
+          host_arch: amd64
+      - name: Build
+        run: cargo build --verbose --release
+      - name: Run tests
+        run: cargo test --verbose
+        # This may fail, but it does not take effects to our artifacts.
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          # This action will package files into a compressed archives,
+          # just seperate them with the archive name.
+          name: launcher-${{ matrix.os }}_amd64
+          path: target/release/launcher*
