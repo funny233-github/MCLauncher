@@ -1,7 +1,5 @@
-use crate::config::{
-    AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries,
-};
-use crate::api::official::VersionManifest;
+use crate::api::official::{Assets, Version, VersionManifest};
+use crate::config::{InstallType, RuntimeConfig, VersionJsonLibraries};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, warn};
 use regex::Regex;
@@ -27,11 +25,11 @@ const OS: &str = "linux";
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
-trait Sha1Compare {
+pub trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &str) -> Ordering;
 }
 
-trait DomainReplacer<T> {
+pub trait DomainReplacer<T> {
     fn replace_domain(&self, domain: &str) -> T;
 }
 
@@ -172,41 +170,54 @@ where
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
-    let version_json = version_json(&config.game_version, &config.mirror.version_manifest)?;
+    // let version_json = version_json(&config.game_version, &config.mirror.version_manifest)?;
+    let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
+    let version = Version::fetch(
+        manifest,
+        &config.game_version,
+        &config.mirror.version_manifest,
+    )?;
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
         .join(config.game_version.clone() + ".json");
+    version.install(&version_json_file);
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
-    fs::create_dir_all(version_json_file.parent().unwrap()).unwrap_or(());
-    fs::write(
-        version_json_file,
-        serde_json::to_string_pretty(&version_json)?,
-    )?;
+    // fs::create_dir_all(version_json_file.parent().unwrap()).unwrap_or(());
+    // fs::write(
+    //     version_json_file,
+    //     serde_json::to_string_pretty(&version_json)?,
+    // )?;
 
     let mut descripts = TaskPool::new();
 
     let game_dir = &config.game_dir;
     let game_version = &config.game_version;
+    let asset_index_file = Path::new(game_dir)
+        .join("assets")
+        .join("indexes")
+        .join(version.asset_index.id.clone() + ".json");
+    let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
+    assets.install(&asset_index_file);
 
-    let asset_index =
-        install_asset_index(game_dir, &config.mirror.version_manifest, &version_json)?;
+    // let asset_index =
+    // install_asset_index(game_dir, &config.mirror.version_manifest, &version_json)?;
     descripts.append(&mut assets_installtask(
         game_dir,
         &config.mirror.assets,
-        asset_index,
+        &assets,
     ));
     descripts.append(&mut libraries_installtask(
         game_dir,
         &config.mirror.libraries,
-        &version_json,
+        &version,
     )?);
     descripts.push_back(client_installtask(
         game_dir,
         game_version,
         &config.mirror.client,
-        &version_json,
+        &version,
     )?);
     descripts.install()?;
 
@@ -216,10 +227,9 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 fn libraries_installtask(
     game_dir: &str,
     libraries_mirror: &str,
-    version_json: &serde_json::Value,
+    version_json: &Version,
 ) -> anyhow::Result<TaskPool> {
-    let libraries: VersionJsonLibraries =
-        serde_json::from_value(version_json["libraries"].clone())?;
+    let libraries = &version_json.libraries;
     let descripts: TaskPool = libraries
         .iter()
         .filter(|obj| {
@@ -250,9 +260,10 @@ fn client_installtask(
     game_dir: &str,
     game_version: &str,
     client_mirror: &str,
-    version_json: &serde_json::Value,
+    version_json: &Version,
 ) -> anyhow::Result<InstallTask> {
-    let json_client = &version_json["downloads"]["client"];
+    // let json_client = &version_json["downloads"]["client"];
+    let json_client = &version_json.downloads["client"];
     Ok(InstallTask {
         url: json_client["url"]
             .as_str()
@@ -268,9 +279,10 @@ fn client_installtask(
     })
 }
 
-fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: AssetJson) -> TaskPool {
+fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: &Assets) -> TaskPool {
     asset_json
         .objects
+        .clone()
         .into_iter()
         .map(|x| InstallTask {
             url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
@@ -285,32 +297,32 @@ fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: AssetJson
         .collect()
 }
 
-fn install_asset_index(
-    game_dir: &str,
-    version_manifest_mirror: &str,
-    version_json: &serde_json::Value,
-) -> anyhow::Result<AssetJson> {
-    let asset_index: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
-    let url = asset_index.url.replace_domain(version_manifest_mirror);
-    let asset_index_file = Path::new(game_dir)
-        .join("assets")
-        .join("indexes")
-        .join(asset_index.id.clone() + ".json");
+// fn install_asset_index(
+//     game_dir: &str,
+//     version_manifest_mirror: &str,
+//     version_json: &Version,
+// ) -> anyhow::Result<AssetJson> {
+//     let asset_index = &version_json.asset_index;
+//     let url = asset_index.url.replace_domain(version_manifest_mirror);
+//     let asset_index_file = Path::new(game_dir)
+//         .join("assets")
+//         .join("indexes")
+//         .join(asset_index.id.clone() + ".json");
 
-    let client = reqwest::blocking::Client::new();
-    let data = client
-        .get(url)
-        .header(header::USER_AGENT, "mc_launcher")
-        .send()?
-        .text()?;
-    if data.sha1_cmp(&asset_index.sha1).is_eq() {
-        fs::create_dir_all(asset_index_file.parent().unwrap())?;
-        fs::write(asset_index_file, &data)?;
-        let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
-        return Ok(datajson);
-    };
-    Err(anyhow::anyhow!("can't get assets json"))
-}
+//     let client = reqwest::blocking::Client::new();
+//     let data = client
+//         .get(url)
+//         .header(header::USER_AGENT, "mc_launcher")
+//         .send()?
+//         .text()?;
+//     if data.sha1_cmp(&asset_index.sha1).is_eq() {
+//         fs::create_dir_all(asset_index_file.parent().unwrap())?;
+//         fs::write(asset_index_file, &data)?;
+//         let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
+//         return Ok(datajson);
+//     };
+//     Err(anyhow::anyhow!("can't get assets json"))
+// }
 
 pub fn version_json(
     game_version: &str,
