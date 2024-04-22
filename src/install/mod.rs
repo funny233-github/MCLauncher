@@ -2,11 +2,11 @@ use crate::config::{
     AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
     VersionType,
 };
-use log::error;
+use log::{error,warn};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex,atomic};
 use std::{
     cmp::Ordering,
     collections::VecDeque,
@@ -39,7 +39,7 @@ trait PathExist {
 }
 
 trait FileInstall {
-    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()>;
+    fn install(&self, task_len: usize, task_done: &Arc<atomic::AtomicU64>) -> anyhow::Result<()>;
 }
 
 trait Installer {
@@ -84,7 +84,7 @@ struct InstallTask {
 
 type TaskPool = VecDeque<InstallTask>;
 
-fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
+fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
     for _ in 0..5 {
         let send = client
@@ -97,37 +97,37 @@ fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::B
                 return Ok(_data);
             }
         };
-        error!("install fail, then retry");
-        thread::sleep(std::time::Duration::from_millis(5));
+        warn!("install fail, then retry");
+        thread::sleep(std::time::Duration::from_secs(3));
     }
     Err(anyhow::anyhow!("download {url} fail"))
 }
 
 impl FileInstall for InstallTask {
-    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()> {
+    fn install(&self, task_len: usize, task_done:&Arc<atomic::AtomicU64>) -> anyhow::Result<()> {
         if !(self.save_file.path_exists()
             && fs::read(&self.save_file)
                 .unwrap()
                 .sha1_cmp(&self.sha1)
                 .is_eq())
         {
-            let data = fetch_bytes_with_timeout(&self.url, &self.sha1)?;
+            let data = fetch_bytes(&self.url, &self.sha1)?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
             fs::write(&self.save_file, data).unwrap();
+            thread::sleep(std::time::Duration::from_secs(1));
         }
-        let mut task_done = task_done.lock().unwrap();
-        *task_done += 1;
+        task_done.fetch_add(1,atomic::Ordering::Relaxed);
         match &self.r#type {
             InstallType::Asset => {
-                println!("{}/{} Asset {} installed", task_done, task_len, self.sha1)
+                println!("{:?}/{} Asset {} installed", task_done, task_len, self.sha1)
             }
             InstallType::Library => println!(
-                "{}/{} library {:?} installed",
+                "{:?}/{} library {:?} installed",
                 task_done,
                 task_len,
                 self.save_file.file_name().unwrap()
             ),
-            InstallType::Client => println!("{}/{} client installed", task_done, task_len),
+            InstallType::Client => println!("{:?}/{} client installed", task_done, task_len),
         }
         Ok(())
     }
@@ -139,7 +139,7 @@ where
 {
     fn install(self) -> anyhow::Result<()> {
         let task_len = self.len();
-        let task_done = Arc::new(Mutex::new(0usize));
+        let task_done = Arc::new(atomic::AtomicU64::new(0));
         let descripts = Arc::new(Mutex::new(self));
         let mut handles = vec![];
         for _ in 0..MAX_THREAD {
@@ -154,7 +154,7 @@ where
                 }
                 if let Err(e) = descs.install(task_len, &task_done_share) {
                     error!("{:#?}", e);
-                    error!("Please rebuild to get Miecraft completely!");
+                    error!("Please reinstall to get Miecraft completely!");
                     panic!();
                 }
             });
@@ -169,7 +169,7 @@ where
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     // install version.json then write it in version dir
-    let version_json = get_version_json(&config.game_version,&config.mirror.version_manifest)?;
+    let version_json = version_json(&config.game_version, &config.mirror.version_manifest)?;
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
@@ -309,7 +309,10 @@ fn install_asset_index(
     Err(anyhow::anyhow!("can't get assets json"))
 }
 
-pub fn get_version_json(game_version: &str, version_manifest_mirror:&str) -> anyhow::Result<serde_json::Value> {
+pub fn version_json(
+    game_version: &str,
+    version_manifest_mirror: &str,
+) -> anyhow::Result<serde_json::Value> {
     let manifest = VersionManifestJson::fetch(version_manifest_mirror)?;
     let url = manifest
         .versions
@@ -333,11 +336,11 @@ pub fn get_version_json(game_version: &str, version_manifest_mirror:&str) -> any
 }
 
 impl VersionManifestJson {
-    pub fn fetch(version_manifest_mirror:&str) -> anyhow::Result<VersionManifestJson> {
+    pub fn fetch(version_manifest_mirror: &str) -> anyhow::Result<VersionManifestJson> {
         let url = version_manifest_mirror.to_owned() + "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
         let data: VersionManifestJson = client
-            .get(&url)
+            .get(url)
             .header(header::USER_AGENT, "mc_launcher")
             .send()?
             .json()?;
@@ -373,14 +376,14 @@ fn test_get_manifest() {
 fn test_get_version_json() {
     let game_version = "1.20.4";
     let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let _ = get_version_json(game_version,version_manifest_mirror).unwrap();
+    let _ = version_json(game_version, version_manifest_mirror).unwrap();
 }
 
 #[test]
 fn test_get_version_json_libraries() {
     let game_version = "1.20.4";
     let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = get_version_json(game_version,version_manifest_mirror).unwrap();
+    let version_json = version_json(game_version, version_manifest_mirror).unwrap();
     let _: VersionJsonLibraries =
         serde_json::from_value(version_json["libraries"].clone()).unwrap();
 }
