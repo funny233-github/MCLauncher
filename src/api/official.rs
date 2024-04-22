@@ -1,9 +1,7 @@
 use super::{DomainReplacer, Sha1Compare};
 use crate::config::{VersionJsonLibraries, VersionType};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
+use std::{collections::HashMap,fs,path::Path};
 
 // version json libraries
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
