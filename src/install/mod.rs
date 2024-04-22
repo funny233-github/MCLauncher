@@ -1,7 +1,7 @@
 use crate::config::{
-    AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
-    VersionType,
+    AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries,
 };
+use crate::api::official::VersionManifest;
 use indicatif::{ProgressBar, ProgressStyle};
 use log::{error, warn};
 use regex::Regex;
@@ -316,15 +316,7 @@ pub fn version_json(
     game_version: &str,
     version_manifest_mirror: &str,
 ) -> anyhow::Result<serde_json::Value> {
-    let manifest = VersionManifestJson::fetch(version_manifest_mirror)?;
-    let url = manifest
-        .versions
-        .iter()
-        .find(|x| x.id == game_version)
-        .unwrap()
-        .url
-        .clone();
-
+    let url = VersionManifest::fetch(version_manifest_mirror)?.url(game_version);
     let url = url.replace_domain(version_manifest_mirror);
 
     let client = reqwest::blocking::Client::new();
@@ -336,43 +328,6 @@ pub fn version_json(
 
     let data: serde_json::Value = serde_json::from_str(data.as_str())?;
     Ok(data)
-}
-
-impl VersionManifestJson {
-    pub fn fetch(version_manifest_mirror: &str) -> anyhow::Result<VersionManifestJson> {
-        let url = version_manifest_mirror.to_owned() + "mc/game/version_manifest.json";
-        let client = reqwest::blocking::Client::new();
-        let data: VersionManifestJson = client
-            .get(url)
-            .header(header::USER_AGENT, "mc_launcher")
-            .send()?
-            .json()?;
-        Ok(data)
-    }
-
-    pub fn version_list(&self, version_type: VersionType) -> Vec<String> {
-        match version_type {
-            VersionType::All => self.versions.iter().map(|x| x.id.clone()).collect(),
-            VersionType::Release => self
-                .versions
-                .iter()
-                .filter(|x| x.r#type == "release")
-                .map(|x| x.id.clone())
-                .collect(),
-            VersionType::Snapshot => self
-                .versions
-                .iter()
-                .filter(|x| x.r#type == "snapshot")
-                .map(|x| x.id.clone())
-                .collect(),
-        }
-    }
-}
-
-#[test]
-fn test_get_manifest() {
-    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let _ = VersionManifestJson::fetch(version_manifest_mirror).unwrap();
 }
 
 #[test]

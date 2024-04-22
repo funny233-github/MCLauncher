@@ -25,29 +25,6 @@ pub struct RuntimeConfig {
     pub mirror: MCMirror,
 }
 
-// version manifest
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VersionManifestVersions {
-    pub id: String,
-    pub r#type: String,
-    pub url: String,
-    pub time: String,
-    #[serde[rename = "releaseTime"]]
-    pub release_time: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VersionManifestLatest {
-    pub release: String,
-    pub snapshot: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VersionManifestJson {
-    pub latest: VersionManifestLatest,
-    pub versions: Vec<VersionManifestVersions>,
-}
-
 // version type
 #[derive(Subcommand, Debug)]
 pub enum VersionType {

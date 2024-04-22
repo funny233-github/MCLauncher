@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
-use launcher::config::{MCMirror, RuntimeConfig, VersionManifestJson, VersionType};
+use launcher::api::official::VersionManifest;
+use launcher::config::{MCMirror, RuntimeConfig, VersionType};
 use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
 use log::error;
@@ -74,8 +75,7 @@ fn handle_args() -> anyhow::Result<()> {
         Command::List(_type) => {
             let config = fs::read_to_string("config.toml")?;
             let config: RuntimeConfig = toml::from_str(&config)?;
-            let list =
-                VersionManifestJson::fetch(&config.mirror.version_manifest)?.version_list(_type);
+            let list = VersionManifest::fetch(&config.mirror.version_manifest)?.list(_type);
             println!("{:?}", list);
         }
         Command::Account { name: _name } => {
