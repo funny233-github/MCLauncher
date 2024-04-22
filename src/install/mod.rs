@@ -2,11 +2,12 @@ use crate::config::{
     AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
     VersionType,
 };
-use log::{error,warn};
+use indicatif::{ProgressBar, ProgressStyle};
+use log::{error, warn};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
-use std::sync::{Arc, Mutex,atomic};
+use std::sync::{Arc, Mutex};
 use std::{
     cmp::Ordering,
     collections::VecDeque,
@@ -39,7 +40,7 @@ trait PathExist {
 }
 
 trait FileInstall {
-    fn install(&self, task_len: usize, task_done: &Arc<atomic::AtomicU64>) -> anyhow::Result<()>;
+    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()>;
 }
 
 trait Installer {
@@ -104,7 +105,7 @@ fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
 }
 
 impl FileInstall for InstallTask {
-    fn install(&self, task_len: usize, task_done:&Arc<atomic::AtomicU64>) -> anyhow::Result<()> {
+    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
         if !(self.save_file.path_exists()
             && fs::read(&self.save_file)
                 .unwrap()
@@ -116,18 +117,14 @@ impl FileInstall for InstallTask {
             fs::write(&self.save_file, data).unwrap();
             thread::sleep(std::time::Duration::from_secs(1));
         }
-        task_done.fetch_add(1,atomic::Ordering::Relaxed);
+        bar.inc(1);
         match &self.r#type {
-            InstallType::Asset => {
-                println!("{:?}/{} Asset {} installed", task_done, task_len, self.sha1)
-            }
-            InstallType::Library => println!(
-                "{:?}/{} library {:?} installed",
-                task_done,
-                task_len,
+            InstallType::Asset => bar.set_message(format!("Asset {} installed", self.sha1)),
+            InstallType::Library => bar.set_message(format!(
+                "library {:?} installed",
                 self.save_file.file_name().unwrap()
-            ),
-            InstallType::Client => println!("{:?}/{} client installed", task_done, task_len),
+            )),
+            InstallType::Client => bar.set_message("client installed"),
         }
         Ok(())
     }
@@ -138,13 +135,19 @@ where
     T: FileInstall + std::marker::Send + 'static + std::marker::Sync,
 {
     fn install(self) -> anyhow::Result<()> {
-        let task_len = self.len();
-        let task_done = Arc::new(atomic::AtomicU64::new(0));
+        let bar = ProgressBar::new(self.len() as u64);
+        bar.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
         let descripts = Arc::new(Mutex::new(self));
         let mut handles = vec![];
         for _ in 0..MAX_THREAD {
             let descripts_share = Arc::clone(&descripts);
-            let task_done_share = Arc::clone(&task_done);
+            let bar_share = bar.clone();
             let thr = thread::spawn(move || loop {
                 let descs;
                 if let Some(desc) = descripts_share.lock().unwrap().pop_back() {
@@ -152,7 +155,7 @@ where
                 } else {
                     return;
                 }
-                if let Err(e) = descs.install(task_len, &task_done_share) {
+                if let Err(e) = descs.install(&bar_share) {
                     error!("{:#?}", e);
                     error!("Please reinstall to get Miecraft completely!");
                     panic!();
