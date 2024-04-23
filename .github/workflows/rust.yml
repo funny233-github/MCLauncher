@@ -3,11 +3,7 @@ name: Nightly Build
 permissions:
   contents: write
 
-on:
-  push:
-    branches: [ "master" ]
-  pull_request:
-    branches: [ "master" ]
+on: [push, pull_request]
 
 env:
   CARGO_TERM_COLOR: always
