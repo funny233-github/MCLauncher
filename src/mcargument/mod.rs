@@ -1,21 +1,16 @@
-use crate::config::{RuntimeConfig, VersionJsonLibraries};
+use crate::api::official::Libraries;
+use crate::config::RuntimeConfig;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 
 #[cfg(target_os = "windows")]
 const CLASSPATH_SEPARATOR: &str = ";";
-#[cfg(target_os = "windows")]
-const TARGET_OS: &str = "windows";
 
 #[cfg(target_os = "linux")]
 const CLASSPATH_SEPARATOR: &str = ":";
-#[cfg(target_os = "linux")]
-const TARGET_OS: &str = "linux";
 
 #[cfg(target_os = "macos")]
 const CLASSPATH_SEPARATOR: &str = ":";
-#[cfg(target_os = "macos")]
-const TARGET_OS: &str = "osx";
 
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
@@ -123,21 +118,10 @@ impl RuntimeConfig {
             .join(self.game_version.clone() + ".json");
         let version_json = fs::read_to_string(version_json_path)?;
         let version_json: serde_json::Value = serde_json::from_str(version_json.as_ref())?;
-        let libraries: VersionJsonLibraries =
-            serde_json::from_value(version_json["libraries"].clone())?;
+        let libraries: Libraries = serde_json::from_value(version_json["libraries"].clone())?;
         let mut paths: Vec<String> = libraries
             .iter()
-            .filter(|obj| {
-                let objs = &obj.rules.clone();
-                if let Some(_objs) = objs {
-                    let flag = _objs
-                        .iter()
-                        .find(|rules| rules.os.clone().unwrap_or_default()["name"] == TARGET_OS);
-                    obj.downloads.classifiers.is_none() && flag.is_some()
-                } else {
-                    obj.downloads.classifiers.is_none()
-                }
-            })
+            .filter(|x| x.is_target_lib())
             .map(|x| {
                 Path::new(&self.game_dir)
                     .join("libraries")

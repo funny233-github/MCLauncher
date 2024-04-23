@@ -18,20 +18,11 @@ use std::{
 
 const MAX_THREAD: usize = 24;
 
-#[cfg(target_os = "windows")]
-const OS: &str = "windows";
-
-#[cfg(target_os = "linux")]
-const OS: &str = "linux";
-
-#[cfg(target_os = "macos")]
-const OS: &str = "osx";
-
-pub trait Sha1Compare {
+trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &str) -> Ordering;
 }
 
-pub trait DomainReplacer<T> {
+trait DomainReplacer<T> {
     fn replace_domain(&self, domain: &str) -> T;
 }
 
@@ -225,17 +216,7 @@ fn libraries_installtask(
     let libraries = &version_json.libraries;
     let descripts: TaskPool = libraries
         .iter()
-        .filter(|obj| {
-            let objs = &obj.rules.clone();
-            if let Some(_objs) = objs {
-                let flag = _objs
-                    .iter()
-                    .find(|rules| rules.os.clone().unwrap_or_default()["name"] == OS);
-                obj.downloads.classifiers.is_none() && flag.clone().is_some()
-            } else {
-                obj.downloads.classifiers.is_none()
-            }
-        })
+        .filter(|obj| obj.is_target_lib())
         .map(|x| {
             let artifact_path = x.downloads.artifact.path.clone();
             InstallTask {

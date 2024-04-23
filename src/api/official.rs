@@ -1,10 +1,19 @@
 use super::{DomainReplacer, Sha1Compare};
-use crate::config::{VersionJsonLibraries, VersionType};
+use crate::config::VersionType;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap,fs,path::Path};
+use std::{collections::HashMap, fs, path::Path};
+
+#[cfg(target_os = "windows")]
+const OS: &str = "windows";
+
+#[cfg(target_os = "linux")]
+const OS: &str = "linux";
+
+#[cfg(target_os = "macos")]
+const OS: &str = "osx";
 
 // version json libraries
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Artifact {
     pub path: String,
     pub sha1: String,
@@ -12,7 +21,7 @@ pub struct Artifact {
     pub url: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LibDownloads {
     pub artifact: Artifact,
     pub classifiers: Option<HashMap<String, Artifact>>,
@@ -24,12 +33,41 @@ pub struct Rules {
     pub os: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {
     pub downloads: LibDownloads,
     pub name: String,
     pub extract: Option<serde_json::Value>,
     pub rules: Option<Vec<Rules>>,
+}
+
+impl Library {
+    /// return true if the Library is target lib which is required
+    /// example:
+    /// ```
+    /// use launcher::api::official::{VersionManifest, Version,Libraries};
+    /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    /// let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    /// let version = Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
+    /// let libraries = version.libraries;
+    /// let targets = libraries.iter().filter(|x|x.is_target_lib()).map(|x|x.clone());
+    /// let targets:Libraries = targets.collect();
+    /// assert!(targets.len() > 0);
+    /// ```
+    pub fn is_target_lib(&self) -> bool {
+        if let Some(rule) = &self.rules {
+            let flag = rule
+                .iter()
+                .find(|x| x.os.clone().unwrap_or_default()["name"] == OS);
+            self.downloads.classifiers.is_none() && flag.is_some()
+        } else {
+            self.downloads.classifiers.is_none()
+        }
+    }
+
+    fn _is_target_native(&self) -> bool {
+        todo!()
+    }
 }
 
 pub type Libraries = Vec<Library>;
@@ -189,7 +227,7 @@ pub struct Version {
     pub id: String,
     #[serde(rename = "javaVersion")]
     pub java_version: serde_json::Value,
-    pub libraries: VersionJsonLibraries,
+    pub libraries: Libraries,
     pub logging: serde_json::Value,
     #[serde(rename = "mainClass")]
     pub main_class: String,
