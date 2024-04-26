@@ -1,3 +1,4 @@
+// provide related function with minecraft official api
 use super::{DomainReplacer, Sha1Compare};
 use crate::config::VersionType;
 use serde::{Deserialize, Serialize};
@@ -37,7 +38,7 @@ pub struct Rules {
 pub struct Library {
     pub downloads: LibDownloads,
     pub name: String,
-    pub extract: Option<serde_json::Value>,
+    pub natives: Option<HashMap<String, String>>,
     pub rules: Option<Vec<Rules>>,
 }
 
@@ -65,8 +66,20 @@ impl Library {
         }
     }
 
-    fn _is_target_native(&self) -> bool {
-        todo!()
+    /// return true if is required native
+    /// example:
+    /// ```
+    /// use launcher::api::official::{VersionManifest, Version,Libraries};
+    /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    /// let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    /// let version = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    /// let libraries = version.libraries;
+    /// let targets = libraries.iter().filter(|x|x.is_target_native()).map(|x|x.clone());
+    /// let targets:Libraries = targets.collect();
+    /// assert!(targets.len() > 0);
+    /// ```
+    pub fn is_target_native(&self) -> bool {
+        self.natives.as_ref().and_then(|x| x.get(OS)).is_some()
     }
 }
 
@@ -162,6 +175,7 @@ impl VersionManifest {
     }
 }
 
+/// asset index in version.json
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssetIndex {
     #[serde[rename = "totalSize"]]
@@ -178,6 +192,8 @@ pub struct Asset {
     pub size: usize,
 }
 
+/// assets.json
+/// which from minecraftfile/assets/indexes/'id'.json
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Assets {
     pub objects: HashMap<String, Asset>,
@@ -216,8 +232,16 @@ impl Assets {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct Arguments {
+    pub game: serde_json::Value,
+    pub jvm: serde_json::Value,
+}
+
+/// version.json
+/// which from minecraftfile/versions/'version'/'version'.json
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Version {
-    pub arguments: serde_json::Value,
+    pub arguments: Arguments,
     #[serde(rename = "assetIndex")]
     pub asset_index: AssetIndex,
     pub assets: String,

@@ -12,7 +12,7 @@ use std::{
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 
@@ -126,6 +126,7 @@ where
     T: FileInstall + std::marker::Send + 'static + std::marker::Sync,
 {
     fn install(self) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::channel();
         let bar = ProgressBar::new(self.len() as u64);
         bar.set_style(
             ProgressStyle::with_template(
@@ -139,6 +140,7 @@ where
         for _ in 0..MAX_THREAD {
             let descripts_share = Arc::clone(&descripts);
             let bar_share = bar.clone();
+            let tx_share = tx.clone();
             let thr = thread::spawn(move || loop {
                 let descs;
                 if let Some(desc) = descripts_share.lock().unwrap().pop_back() {
@@ -146,13 +148,12 @@ where
                 } else {
                     return;
                 }
-                if let Err(e) = descs.install(&bar_share) {
-                    error!("{:#?}", e);
-                    error!("Please reinstall to get Miecraft completely!");
-                    panic!();
-                }
+                tx_share.send(descs.install(&bar_share)).unwrap();
             });
             handles.push(thr);
+        }
+        for received in rx {
+            received?;
         }
         for handle in handles {
             handle.join().unwrap();

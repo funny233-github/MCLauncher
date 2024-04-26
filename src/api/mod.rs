@@ -3,7 +3,7 @@ use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
 macro_rules! fetch {
     ($client:ident,$url:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch json fail"));
+        let mut res = Err(anyhow::anyhow!("fetch fail"));
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
@@ -14,13 +14,13 @@ macro_rules! fetch {
                 res = Ok(_data);
                 break;
             }
-            log::warn!("install fail, then retry");
+            log::warn!("fetch fail, then retry");
             std::thread::sleep(std::time::Duration::from_secs(3));
         }
         res
     }};
     ($client:ident,$url:ident,$sha1:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch json fail"));
+        let mut res = Err(anyhow::anyhow!("fetch fail"));
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
@@ -33,7 +33,7 @@ macro_rules! fetch {
                     break;
                 }
             }
-            log::warn!("install fail, then retry");
+            log::warn!("fetch fail, then retry");
             std::thread::sleep(std::time::Duration::from_secs(3));
         }
         res

@@ -1,4 +1,4 @@
-use crate::api::official::Libraries;
+use crate::api::official::Version;
 use crate::config::RuntimeConfig;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -29,6 +29,7 @@ fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<
 fn replace_arguments_from_jvm(
     args: Vec<String>,
     config: &RuntimeConfig,
+    version_api: &Version,
 ) -> anyhow::Result<Vec<String>> {
     let natives_dir = Path::new(&config.game_dir)
         .join("natives")
@@ -38,7 +39,7 @@ fn replace_arguments_from_jvm(
         ("${natives_directory}", natives_dir),
         ("${launcher_name}", "my_launcher".into()),
         ("${launcher_version}", "114.514".into()),
-        ("${classpath}", config.get_classpaths()?),
+        ("${classpath}", config.get_classpaths(version_api)?),
     ]);
     Ok(replace_arguments(args, valuemap))
 }
@@ -47,12 +48,12 @@ fn replace_arguments_from_game(
     args: Vec<String>,
     config: &RuntimeConfig,
 ) -> anyhow::Result<Vec<String>> {
-    let js = config.version_json_provider()?;
+    let js = config.version_api()?;
     let assets_root: String = Path::new(&config.game_dir)
         .join("assets")
         .to_string_lossy()
         .into();
-    let assets_index_name = js["assets"].as_str().unwrap().into();
+    let assets_index_name = js.assets.into();
     let valuemap = HashMap::from([
         ("${auth_player_name}", config.user_name.clone()),
         ("${version_name}", config.game_version.clone()),
@@ -83,16 +84,15 @@ impl RuntimeConfig {
             format!("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump"),
         ];
 
-        let js = self.version_json_provider()?;
-        let arguments = &mut js["arguments"].clone();
-        let jvm = &mut arguments["jvm"];
+        let js = self.version_api()?;
+        let jvm = &mut js.arguments.jvm.clone();
 
         let jvm_args = self.get_normal_args_from(jvm)?;
-        let mut jvm_args = replace_arguments_from_jvm(jvm_args, self)?;
+        let mut jvm_args = replace_arguments_from_jvm(jvm_args, self, &js)?;
         args.append(&mut jvm_args);
-        args.push(js["mainClass"].as_str().unwrap().into());
+        args.push(js.main_class.as_str().into());
 
-        let game = &mut arguments["game"];
+        let game = &mut js.arguments.game.clone();
         let game_args = self.get_normal_args_from(game)?;
         let mut game_args = replace_arguments_from_game(game_args, self)?;
         args.append(&mut game_args);
@@ -101,7 +101,6 @@ impl RuntimeConfig {
     }
 
     fn get_normal_args_from(&self, js: &mut serde_json::Value) -> anyhow::Result<Vec<String>> {
-        //TODO parse arg which contain "rules"
         Ok(js
             .as_array()
             .unwrap()
@@ -111,15 +110,9 @@ impl RuntimeConfig {
             .collect())
     }
 
-    fn get_classpaths(&self) -> anyhow::Result<String> {
-        let version_json_path = Path::new(&self.game_dir)
-            .join("versions")
-            .join(&self.game_version)
-            .join(self.game_version.clone() + ".json");
-        let version_json = fs::read_to_string(version_json_path)?;
-        let version_json: serde_json::Value = serde_json::from_str(version_json.as_ref())?;
-        let libraries: Libraries = serde_json::from_value(version_json["libraries"].clone())?;
-        let mut paths: Vec<String> = libraries
+    fn get_classpaths(&self, version_api: &Version) -> anyhow::Result<String> {
+        let mut paths: Vec<String> = version_api
+            .libraries
             .iter()
             .filter(|x| x.is_target_lib())
             .map(|x| {
@@ -141,7 +134,7 @@ impl RuntimeConfig {
         Ok(paths.join(CLASSPATH_SEPARATOR))
     }
 
-    fn version_json_provider(&self) -> anyhow::Result<serde_json::Value> {
+    fn version_api(&self) -> anyhow::Result<Version> {
         let jsfile_path = Path::new(&self.game_dir)
             .join("versions")
             .join(&self.game_version)
