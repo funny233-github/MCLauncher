@@ -53,7 +53,7 @@ fn replace_arguments_from_game(
         .join("assets")
         .to_string_lossy()
         .into();
-    let assets_index_name = js.assets.into();
+    let assets_index_name = js.assets;
     let valuemap = HashMap::from([
         ("${auth_player_name}", config.user_name.clone()),
         ("${version_name}", config.game_version.clone()),

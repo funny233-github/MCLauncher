@@ -86,10 +86,3 @@ pub struct LibrarieObject {
     pub rules: Option<Vec<LibRules>>,
 }
 pub type VersionJsonLibraries = Vec<LibrarieObject>;
-
-// install descriptor
-pub enum InstallType {
-    Asset,
-    Library,
-    Client,
-}
