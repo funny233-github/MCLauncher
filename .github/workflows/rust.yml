@@ -18,30 +18,56 @@ jobs:
 
     strategy:
       matrix:
-        os: [windows, macos, ubuntu]
+        include:
+          - os: windows
+            plat: windows
+          - os: macos
+            plat: darwin
+          - os: ubuntu
+            plat: linux
       fail-fast: false
 
     runs-on: ${{ matrix.os }}-latest
 
     steps:
       - uses: actions/checkout@v4
-      # Rust Tools are already installed and available in the Runner.
-      # See: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#rust-tools
+
       - if: contains(matrix.os, 'windows')
         # Rust & Cargo requires MSVC Build Tools on Windows.
         uses: seanmiddleditch/gha-setup-vsdevenv@v4
         with:
           arch: amd64
           host_arch: amd64
+
+      - # Use this for caching Cargo dependencies.
+        uses: Swatinem/rust-cache@v2
+
       - name: Build
+        # Rust Tools are already installed and available in the Runner.
+        # See: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#rust-tools
         run: cargo build --verbose --release
+
       - name: Run tests
         run: cargo test --verbose
-        # This may fail, but it does not take effects to our artifacts.
+        # This may fail, but it does not take affects to our artifacts.
         continue-on-error: true
-      - uses: actions/upload-artifact@v4
+
+      - name: Upload artifact (amd64)
+        # Currenty, `windows-latest` and `ubuntu-latest` run on Intel chips.
+        if: ${{ !contains(matrix.os, 'macos') }}
+        uses: actions/upload-artifact@v4
         with:
           # This action will package files into a compressed archives,
           # just seperate them with the archive name.
-          name: launcher-${{ matrix.os }}_amd64
+          name: launcher-${{ matrix.plat }}_amd64
+          path: target/release/launcher*
+
+      - name: Upload artifact (arm64)
+        # While `macos-latest` defaults to Apple Silicon chip.
+        if: contains(matrix.os, 'macos')
+        uses: actions/upload-artifact@v4
+        with:
+          # This action will package files into a compressed archives,
+          # just seperate them with the archive name.
+          name: launcher-${{ matrix.plat }}_arm64
           path: target/release/launcher*
