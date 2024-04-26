@@ -3,7 +3,7 @@ use crate::{
     config::{InstallType, RuntimeConfig},
 };
 use indicatif::{ProgressBar, ProgressStyle};
-use log::{error, warn};
+use log::warn;
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
@@ -152,6 +152,7 @@ where
             });
             handles.push(thr);
         }
+        drop(tx);
         for received in rx {
             received?;
         }
