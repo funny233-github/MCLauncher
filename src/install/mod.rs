@@ -220,7 +220,7 @@ where
 
     ///Moves all the tasks of `other` into `self`, leaving `other` empty.
     ///# Notice
-    ///The `other` must be a &mut VecDeque<T> type
+    ///The `other` must be a `&mut VecDeque<T>` type
     ///# Panics
     ///Panics if the new number of elements in self overflows a `usize`
     ///This function might panic when called if the lock is already held by
