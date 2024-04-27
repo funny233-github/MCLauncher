@@ -16,7 +16,7 @@ use std::{
     thread,
 };
 
-const MAX_THREAD: usize = 24;
+const MAX_THREAD: usize = 64;
 
 trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &str) -> Ordering;
@@ -117,7 +117,6 @@ impl FileInstall for InstallTask {
             let data = fetch_bytes(&self.url, &self.sha1)?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
             fs::write(&self.save_file, data).unwrap();
-            thread::sleep(std::time::Duration::from_secs(1));
         }
         bar.inc(1);
         match &self.r#type {
