@@ -1,30 +1,22 @@
-use crate::config::{
-    AssetIndex, AssetJson, InstallType, RuntimeConfig, VersionJsonLibraries, VersionManifestJson,
-    VersionType,
+use crate::{
+    api::official::{Assets, Version, VersionManifest},
+    config::RuntimeConfig,
 };
-use log::error;
+use indicatif::{ProgressBar, ProgressStyle};
+use log::warn;
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
-use std::sync::{Arc, Mutex};
 use std::{
     cmp::Ordering,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
+    sync::{mpsc, Arc, Mutex},
     thread,
 };
 
 const MAX_THREAD: usize = 24;
-
-#[cfg(target_os = "windows")]
-const OS: &str = "windows";
-
-#[cfg(target_os = "linux")]
-const OS: &str = "linux";
-
-#[cfg(target_os = "macos")]
-const OS: &str = "osx";
 
 trait Sha1Compare {
     fn sha1_cmp(&self, sha1code: &str) -> Ordering;
@@ -38,12 +30,8 @@ trait PathExist {
     fn path_exists(&self) -> bool;
 }
 
-trait FileInstall {
-    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()>;
-}
-
-trait Installer {
-    fn install(self) -> anyhow::Result<()>;
+pub trait FileInstall {
+    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()>;
 }
 
 impl DomainReplacer<String> for String {
@@ -75,16 +63,31 @@ where
     }
 }
 
-struct InstallTask {
+#[derive(Debug,Default,Clone,PartialEq)]
+pub enum InstallType {
+    #[default]
+    Asset,
+    Library,
+    Client,
+}
+
+#[derive(Debug,Default,Clone,PartialEq)]
+pub struct InstallTask {
     pub url: String,
     pub sha1: String,
     pub save_file: PathBuf,
     pub r#type: InstallType,
 }
 
-type TaskPool = VecDeque<InstallTask>;
+#[derive(Debug,Default,Clone)]
+pub struct TaskPool<T>
+where
+    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
+{
+    pub pool: Arc<Mutex<VecDeque<T>>>,
+}
 
-fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
+fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
     for _ in 0..5 {
         let send = client
@@ -97,68 +100,178 @@ fn fetch_bytes_with_timeout(url: &String, sha1: &str) -> anyhow::Result<bytes::B
                 return Ok(_data);
             }
         };
-        error!("install fail, then retry");
-        thread::sleep(std::time::Duration::from_millis(5));
+        warn!("install fail, then retry");
+        thread::sleep(std::time::Duration::from_secs(3));
     }
     Err(anyhow::anyhow!("download {url} fail"))
 }
 
 impl FileInstall for InstallTask {
-    fn install(&self, task_len: usize, task_done: &Arc<Mutex<usize>>) -> anyhow::Result<()> {
+    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
         if !(self.save_file.path_exists()
             && fs::read(&self.save_file)
                 .unwrap()
                 .sha1_cmp(&self.sha1)
                 .is_eq())
         {
-            let data = fetch_bytes_with_timeout(&self.url, &self.sha1)?;
+            let data = fetch_bytes(&self.url, &self.sha1)?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
             fs::write(&self.save_file, data).unwrap();
+            thread::sleep(std::time::Duration::from_secs(1));
         }
-        let mut task_done = task_done.lock().unwrap();
-        *task_done += 1;
+        bar.inc(1);
         match &self.r#type {
-            InstallType::Asset => {
-                println!("{}/{} Asset {} installed", task_done, task_len, self.sha1)
-            }
-            InstallType::Library => println!(
-                "{}/{} library {:?} installed",
-                task_done,
-                task_len,
+            InstallType::Asset => bar.set_message(format!("Asset {} installed", self.sha1)),
+            InstallType::Library => bar.set_message(format!(
+                "library {:?} installed",
                 self.save_file.file_name().unwrap()
-            ),
-            InstallType::Client => println!("{}/{} client installed", task_done, task_len),
+            )),
+            InstallType::Client => bar.set_message("client installed"),
         }
         Ok(())
     }
 }
 
-impl<T> Installer for VecDeque<T>
+impl<T> TaskPool<T>
 where
-    T: FileInstall + std::marker::Send + 'static + std::marker::Sync,
+    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
 {
-    fn install(self) -> anyhow::Result<()> {
-        let task_len = self.len();
-        let task_done = Arc::new(Mutex::new(0usize));
-        let descripts = Arc::new(Mutex::new(self));
+    ///Constructs a new TaskPool
+    ///# Panics
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask};
+    ///let pool:TaskPool<InstallTask> = TaskPool::new();
+    ///```
+    pub fn new() -> Self {
+        TaskPool {
+            pool: Arc::new(Mutex::new(VecDeque::new())),
+        }
+    }
+
+    ///Returns the number of task in the Pool
+    ///# Panics
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask, InstallType};
+    ///let mut pool = TaskPool::new();
+    ///let task = InstallTask::default();
+    ///assert_eq!(pool.len(), 0);
+    ///pool.push_back(task);
+    ///assert_eq!(pool.len(), 1);
+    ///```
+    pub fn len(&self) -> usize {
+        self.pool.lock().unwrap().len()
+    }
+
+    ///Returns `true` if the Pool is empty.
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask};
+    ///let mut pool = TaskPool::new();
+    ///let task = InstallTask::default();
+    ///assert!(pool.is_empty());
+    ///pool.push_back(task);
+    ///assert!(!pool.is_empty());
+    ///```
+    pub fn is_empty(&self) -> bool {
+        self.pool.lock().unwrap().is_empty()
+    }
+
+    ///Removes the last task from the Pool and returns it, or `None` if
+    ///it is empty
+    ///# Panics
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask, InstallType};
+    ///use std::path::Path;
+    ///let mut pool = TaskPool::new();
+    ///let task = InstallTask::default();
+    ///assert_eq!(pool.pop_back(), None);
+    ///pool.push_back(task.clone());
+    ///assert_eq!(pool.pop_back(), Some(task));
+    pub fn pop_back(&self) -> Option<T> {
+        self.pool.lock().unwrap().pop_back()
+    }
+
+    ///Appends an task to the back of the Pool
+    ///# Panics
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask, InstallType};
+    ///use std::path::Path;
+    ///let mut pool = TaskPool::new();
+    ///let task = InstallTask::default();
+    ///assert_eq!(pool.len(), 0);
+    ///pool.push_back(task);
+    ///assert_eq!(pool.len(), 1);
+    ///```
+    pub fn push_back(&self, value: T) {
+        self.pool.lock().unwrap().push_back(value)
+    }
+
+    ///Moves all the tasks of `other` into `self`, leaving `other` empty.
+    ///# Notice
+    ///The `other` must be a &mut VecDeque<T> type
+    ///# Panics
+    ///Panics if the new number of elements in self overflows a `usize`
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    ///# Examples
+    ///```
+    ///use launcher::install::{TaskPool, InstallTask, InstallType};
+    ///use std::collections::VecDeque;
+    ///use std::path::Path;
+    ///let mut pool1 = TaskPool::new();
+    ///let mut p = VecDeque::new();
+    ///let task = InstallTask::default();
+    ///p.push_back(task.clone());
+    ///pool1.push_back(task.clone());
+    ///pool1.append(&mut p);
+    ///assert_eq!(pool1.len(), 2);
+    ///```
+    pub fn append(&self, other: &mut VecDeque<T>) {
+        self.pool.lock().unwrap().append(other);
+    }
+
+    //Execute all install task.
+    //# Error
+    //Return Error when install fail 5 times
+    pub fn install(self) -> anyhow::Result<()> {
+        let (tx, rx) = mpsc::channel();
+        let bar = ProgressBar::new(self.len() as u64);
+        bar.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
         let mut handles = vec![];
         for _ in 0..MAX_THREAD {
-            let descripts_share = Arc::clone(&descripts);
-            let task_done_share = Arc::clone(&task_done);
+            let tasks_share = self.clone();
+            let bar_share = bar.clone();
+            let tx_share = tx.clone();
             let thr = thread::spawn(move || loop {
-                let descs;
-                if let Some(desc) = descripts_share.lock().unwrap().pop_back() {
-                    descs = desc;
+                if let Some(task) = tasks_share.pop_back() {
+                    tx_share.send(task.install(&bar_share)).unwrap();
                 } else {
                     return;
                 }
-                if let Err(e) = descs.install(task_len, &task_done_share) {
-                    error!("{:#?}", e);
-                    error!("Please rebuild to get Miecraft completely!");
-                    panic!();
-                }
             });
             handles.push(thr);
+        }
+        drop(tx);
+        for received in rx {
+            received?;
         }
         for handle in handles {
             handle.join().unwrap();
@@ -168,44 +281,48 @@ where
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    // install version.json then write it in version dir
-    let version_json = get_version_json(&config.game_version,&config.mirror.version_manifest)?;
+    let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
+    let version = Version::fetch(
+        manifest,
+        &config.game_version,
+        &config.mirror.version_manifest,
+    )?;
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
         .join(config.game_version.clone() + ".json");
+    version.install(&version_json_file);
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
-    fs::create_dir_all(version_json_file.parent().unwrap()).unwrap_or(());
-    fs::write(
-        version_json_file,
-        serde_json::to_string_pretty(&version_json)?,
-    )?;
 
-    let mut descripts = TaskPool::new();
+    let tasks = TaskPool::new();
 
     let game_dir = &config.game_dir;
     let game_version = &config.game_version;
+    let asset_index_file = Path::new(game_dir)
+        .join("assets")
+        .join("indexes")
+        .join(version.asset_index.id.clone() + ".json");
+    let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
+    assets.install(&asset_index_file);
 
-    let asset_index =
-        install_asset_index(game_dir, &config.mirror.version_manifest, &version_json)?;
-    descripts.append(&mut assets_installtask(
+    tasks.append(&mut assets_installtask(
         game_dir,
         &config.mirror.assets,
-        asset_index,
+        &assets,
     ));
-    descripts.append(&mut libraries_installtask(
+    tasks.append(&mut libraries_installtask(
         game_dir,
         &config.mirror.libraries,
-        &version_json,
+        &version,
     )?);
-    descripts.push_back(client_installtask(
+    tasks.push_back(client_installtask(
         game_dir,
         game_version,
         &config.mirror.client,
-        &version_json,
+        &version,
     )?);
-    descripts.install()?;
+    tasks.install()?;
 
     Ok(())
 }
@@ -213,23 +330,12 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 fn libraries_installtask(
     game_dir: &str,
     libraries_mirror: &str,
-    version_json: &serde_json::Value,
-) -> anyhow::Result<TaskPool> {
-    let libraries: VersionJsonLibraries =
-        serde_json::from_value(version_json["libraries"].clone())?;
-    let descripts: TaskPool = libraries
+    version_json: &Version,
+) -> anyhow::Result<VecDeque<InstallTask>> {
+    let libraries = &version_json.libraries;
+    Ok(libraries
         .iter()
-        .filter(|obj| {
-            let objs = &obj.rules.clone();
-            if let Some(_objs) = objs {
-                let flag = _objs
-                    .iter()
-                    .find(|rules| rules.os.clone().unwrap_or_default()["name"] == OS);
-                obj.downloads.classifiers.is_none() && flag.clone().is_some()
-            } else {
-                obj.downloads.classifiers.is_none()
-            }
-        })
+        .filter(|obj| obj.is_target_lib())
         .map(|x| {
             let artifact_path = x.downloads.artifact.path.clone();
             InstallTask {
@@ -239,17 +345,16 @@ fn libraries_installtask(
                 r#type: InstallType::Library,
             }
         })
-        .collect();
-    Ok(descripts)
+        .collect())
 }
 
 fn client_installtask(
     game_dir: &str,
     game_version: &str,
     client_mirror: &str,
-    version_json: &serde_json::Value,
+    version_json: &Version,
 ) -> anyhow::Result<InstallTask> {
-    let json_client = &version_json["downloads"]["client"];
+    let json_client = &version_json.downloads["client"];
     Ok(InstallTask {
         url: json_client["url"]
             .as_str()
@@ -265,9 +370,14 @@ fn client_installtask(
     })
 }
 
-fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: AssetJson) -> TaskPool {
+fn assets_installtask(
+    game_dir: &str,
+    assets_mirror: &str,
+    asset_json: &Assets,
+) -> VecDeque<InstallTask> {
     asset_json
         .objects
+        .clone()
         .into_iter()
         .map(|x| InstallTask {
             url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
@@ -280,107 +390,4 @@ fn assets_installtask(game_dir: &str, assets_mirror: &str, asset_json: AssetJson
             r#type: InstallType::Asset,
         })
         .collect()
-}
-
-fn install_asset_index(
-    game_dir: &str,
-    version_manifest_mirror: &str,
-    version_json: &serde_json::Value,
-) -> anyhow::Result<AssetJson> {
-    let asset_index: AssetIndex = serde_json::from_value(version_json["assetIndex"].clone())?;
-    let url = asset_index.url.replace_domain(version_manifest_mirror);
-    let asset_index_file = Path::new(game_dir)
-        .join("assets")
-        .join("indexes")
-        .join(asset_index.id.clone() + ".json");
-
-    let client = reqwest::blocking::Client::new();
-    let data = client
-        .get(url)
-        .header(header::USER_AGENT, "mc_launcher")
-        .send()?
-        .text()?;
-    if data.sha1_cmp(&asset_index.sha1).is_eq() {
-        fs::create_dir_all(asset_index_file.parent().unwrap())?;
-        fs::write(asset_index_file, &data)?;
-        let datajson: AssetJson = serde_json::from_str(data.as_ref())?;
-        return Ok(datajson);
-    };
-    Err(anyhow::anyhow!("can't get assets json"))
-}
-
-pub fn get_version_json(game_version: &str, version_manifest_mirror:&str) -> anyhow::Result<serde_json::Value> {
-    let manifest = VersionManifestJson::fetch(version_manifest_mirror)?;
-    let url = manifest
-        .versions
-        .iter()
-        .find(|x| x.id == game_version)
-        .unwrap()
-        .url
-        .clone();
-
-    let url = url.replace_domain(version_manifest_mirror);
-
-    let client = reqwest::blocking::Client::new();
-    let data = client
-        .get(url)
-        .header(header::USER_AGENT, "mc_launcher")
-        .send()?
-        .text()?;
-
-    let data: serde_json::Value = serde_json::from_str(data.as_str())?;
-    Ok(data)
-}
-
-impl VersionManifestJson {
-    pub fn fetch(version_manifest_mirror:&str) -> anyhow::Result<VersionManifestJson> {
-        let url = version_manifest_mirror.to_owned() + "mc/game/version_manifest.json";
-        let client = reqwest::blocking::Client::new();
-        let data: VersionManifestJson = client
-            .get(&url)
-            .header(header::USER_AGENT, "mc_launcher")
-            .send()?
-            .json()?;
-        Ok(data)
-    }
-
-    pub fn version_list(&self, version_type: VersionType) -> Vec<String> {
-        match version_type {
-            VersionType::All => self.versions.iter().map(|x| x.id.clone()).collect(),
-            VersionType::Release => self
-                .versions
-                .iter()
-                .filter(|x| x.r#type == "release")
-                .map(|x| x.id.clone())
-                .collect(),
-            VersionType::Snapshot => self
-                .versions
-                .iter()
-                .filter(|x| x.r#type == "snapshot")
-                .map(|x| x.id.clone())
-                .collect(),
-        }
-    }
-}
-
-#[test]
-fn test_get_manifest() {
-    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let _ = VersionManifestJson::fetch(version_manifest_mirror).unwrap();
-}
-
-#[test]
-fn test_get_version_json() {
-    let game_version = "1.20.4";
-    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let _ = get_version_json(game_version,version_manifest_mirror).unwrap();
-}
-
-#[test]
-fn test_get_version_json_libraries() {
-    let game_version = "1.20.4";
-    let version_manifest_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = get_version_json(game_version,version_manifest_mirror).unwrap();
-    let _: VersionJsonLibraries =
-        serde_json::from_value(version_json["libraries"].clone()).unwrap();
 }
