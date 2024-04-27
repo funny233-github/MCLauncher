@@ -280,7 +280,9 @@ where
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
+    println!("fetch version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
+    println!("fetch version...");
     let version = Version::fetch(
         manifest,
         &config.game_version,
@@ -302,6 +304,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
+    println!("fetch assets...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
 
