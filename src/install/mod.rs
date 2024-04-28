@@ -19,7 +19,9 @@ use std::{
 const MAX_THREAD: usize = 64;
 
 trait Sha1Compare {
-    fn sha1_cmp(&self, sha1code: &str) -> Ordering;
+    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
+    where
+        C: AsRef<str> + Into<String>;
 }
 
 trait DomainReplacer<T> {
@@ -46,7 +48,10 @@ impl<T> Sha1Compare for T
 where
     T: AsRef<[u8]>,
 {
-    fn sha1_cmp(&self, sha1code: &str) -> Ordering {
+    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
+    where
+        C: AsRef<str> + Into<String>,
+    {
         let mut hasher = Sha1::new();
         hasher.update(self);
         let sha1 = hasher.finalize();
@@ -63,7 +68,7 @@ where
     }
 }
 
-#[derive(Debug,Default,Clone,PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum InstallType {
     #[default]
     Asset,
@@ -71,15 +76,15 @@ pub enum InstallType {
     Client,
 }
 
-#[derive(Debug,Default,Clone,PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct InstallTask {
     pub url: String,
-    pub sha1: String,
+    pub sha1: Option<String>,
     pub save_file: PathBuf,
     pub r#type: InstallType,
 }
 
-#[derive(Debug,Default,Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TaskPool<T>
 where
     T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
@@ -87,7 +92,7 @@ where
     pub pool: Arc<Mutex<VecDeque<T>>>,
 }
 
-fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
+fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
     for _ in 0..5 {
         let send = client
@@ -96,7 +101,10 @@ fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
             .send();
         let data = send.and_then(|x| x.bytes());
         if let Ok(_data) = data {
-            if _data.sha1_cmp(sha1).is_eq() {
+            if sha1.is_none() {
+                return Ok(_data);
+            }
+            if _data.sha1_cmp(sha1.as_ref().unwrap()).is_eq() {
                 return Ok(_data);
             }
         };
@@ -108,11 +116,12 @@ fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
 
 impl FileInstall for InstallTask {
     fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
-        if !(self.save_file.path_exists()
-            && fs::read(&self.save_file)
-                .unwrap()
-                .sha1_cmp(&self.sha1)
-                .is_eq())
+        if self.sha1.is_none()
+            || !(self.save_file.path_exists()
+                && fs::read(&self.save_file)
+                    .unwrap()
+                    .sha1_cmp(self.sha1.as_ref().unwrap())
+                    .is_eq())
         {
             let data = fetch_bytes(&self.url, &self.sha1)?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
@@ -120,7 +129,9 @@ impl FileInstall for InstallTask {
         }
         bar.inc(1);
         match &self.r#type {
-            InstallType::Asset => bar.set_message(format!("Asset {} installed", self.sha1)),
+            InstallType::Asset => {
+                bar.set_message(format!("Asset {} installed", self.sha1.as_ref().unwrap()))
+            }
             InstallType::Library => bar.set_message(format!(
                 "library {:?} installed",
                 self.save_file.file_name().unwrap()
@@ -363,7 +374,7 @@ fn client_installtask(
             .unwrap()
             .to_string()
             .replace_domain(client_mirror),
-        sha1: json_client["sha1"].as_str().unwrap().to_string(),
+        sha1: Some(json_client["sha1"].as_str().unwrap().to_string()),
         save_file: Path::new(game_dir)
             .join("versions")
             .join(game_version)
@@ -383,7 +394,7 @@ fn assets_installtask(
         .into_iter()
         .map(|x| InstallTask {
             url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
-            sha1: x.1.hash.clone(),
+            sha1: Some(x.1.hash.clone()),
             save_file: Path::new(game_dir)
                 .join("assets")
                 .join("objects")

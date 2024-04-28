@@ -100,10 +100,8 @@ impl RuntimeConfig {
         Ok(args)
     }
 
-    fn get_normal_args_from(&self, js: &mut serde_json::Value) -> anyhow::Result<Vec<String>> {
+    fn get_normal_args_from(&self, js: &mut Vec<serde_json::Value>) -> anyhow::Result<Vec<String>> {
         Ok(js
-            .as_array()
-            .unwrap()
             .iter()
             .filter(|x| x.is_string())
             .map(|x| x.as_str().unwrap().into())
