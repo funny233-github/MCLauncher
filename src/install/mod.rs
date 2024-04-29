@@ -1,6 +1,7 @@
 use crate::{
     api::official::{Assets, Version, VersionManifest},
-    config::RuntimeConfig,
+    api::fabric::Profile,
+    config::{MCLoader, RuntimeConfig},
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
@@ -14,6 +15,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
+    borrow::Cow,
 };
 
 const MAX_THREAD: usize = 64;
@@ -294,11 +296,19 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     println!("fetch version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
     println!("fetch version...");
-    let version = Version::fetch(
+    let mut version = Version::fetch(
         manifest,
         &config.game_version,
         &config.mirror.version_manifest,
     )?;
+    if let MCLoader::Fabric(v) = &config.loader {
+        println!("fetch fabric profile...");
+        let game_version = Cow::from(&config.game_version);
+        let loader_version = Cow::from(v);
+        let profile = Profile::fetch(&config.mirror.fabric_meta,game_version,loader_version)?;
+        version.merge(profile)
+    }
+
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
@@ -306,8 +316,6 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     version.install(&version_json_file);
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
-
-    let tasks = TaskPool::new();
 
     let game_dir = &config.game_dir;
     let game_version = &config.game_version;
@@ -319,6 +327,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
 
+    let tasks = TaskPool::new();
     tasks.append(&mut assets_installtask(
         game_dir,
         &config.mirror.assets,
@@ -327,6 +336,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     tasks.append(&mut libraries_installtask(
         game_dir,
         &config.mirror.libraries,
+        &config.mirror.fabric_maven,
         &version,
     )?);
     tasks.push_back(client_installtask(
@@ -343,6 +353,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 fn libraries_installtask(
     game_dir: &str,
     libraries_mirror: &str,
+    fabric_maven_mirror: &str,
     version_json: &Version,
 ) -> anyhow::Result<VecDeque<InstallTask>> {
     let libraries = &version_json.libraries;
@@ -350,11 +361,19 @@ fn libraries_installtask(
         .iter()
         .filter(|obj| obj.is_target_lib())
         .map(|x| {
-            let artifact_path = x.downloads.artifact.path.clone();
+            let artifact = &x.downloads.artifact;
+            let path = &artifact.path;
+            let mirror;
+            if artifact.url == "https://maven.fabricmc.net/" {
+                mirror = fabric_maven_mirror;
+            }
+            else {
+                mirror = libraries_mirror;
+            }
             InstallTask {
-                url: libraries_mirror.to_owned() + &artifact_path,
+                url: mirror.to_owned() + &path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(&artifact_path),
+                save_file: Path::new(game_dir).join("libraries").join(&path),
                 r#type: InstallType::Library,
             }
         })

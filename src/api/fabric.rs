@@ -63,6 +63,21 @@ pub struct Loader {
     pub stable: bool,
 }
 
+impl Loader {
+    /// fetch fabric all of the loader versions
+    /// # Examples
+    /// ```
+    /// use launcher::api::fabric::Loader;
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let _ = Loader::fetch(mirror).unwrap();
+    /// ```
+    pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
+        let url = mirror.to_owned() + "/v2/versions/loader";
+        let client = reqwest::blocking::Client::new();
+        fetch!(client, url, json)
+    }
+}
+
 /// Lists all of the intermediary versions, stable is based of the Minecraft version.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Intermediary {
@@ -81,21 +96,6 @@ impl Intermediary {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "/v2/versions/intermediary";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
-    }
-}
-
-impl Loader {
-    /// fetch fabric all of the loader versions
-    /// # Examples
-    /// ```
-    /// use launcher::api::fabric::Loader;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
-    /// let _ = Loader::fetch(mirror).unwrap();
-    /// ```
-    pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
-        let url = mirror.to_owned() + "/v2/versions/loader";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }

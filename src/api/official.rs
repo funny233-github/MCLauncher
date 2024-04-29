@@ -313,7 +313,7 @@ impl Version {
     ///     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
     ///         None
     ///     }
-    /// } 
+    /// }
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = official::VersionManifest::fetch(manifest_mirror).unwrap();
     /// let mut version = official::Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
