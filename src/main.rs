@@ -22,7 +22,7 @@ enum Command {
     /// Init a new instance
     Init,
 
-    /// List Minecraft versions from manifest
+    /// List Minecraft or Loader versions
     #[command(subcommand)]
     List(ListSub),
 
