@@ -18,7 +18,7 @@ use std::{
     borrow::Cow,
 };
 
-const MAX_THREAD: usize = 64;
+const MAX_THREAD: usize = 32;
 
 trait Sha1Compare {
     fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
@@ -99,7 +99,7 @@ fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Byt
     for _ in 0..5 {
         let send = client
             .get(url)
-            .header(header::USER_AGENT, "mc_launcher")
+            .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
             .send();
         let data = send.and_then(|x| x.bytes());
         if let Ok(_data) = data {
