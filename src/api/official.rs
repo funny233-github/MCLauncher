@@ -1,4 +1,4 @@
-// provide related function with minecraft official api
+/// provide related function with minecraft official api
 use super::{DomainReplacer, Sha1Compare};
 use crate::config::VersionType;
 use serde::{Deserialize, Serialize};
@@ -17,8 +17,8 @@ const OS: &str = "osx";
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Artifact {
     pub path: String,
-    pub sha1: String,
-    pub size: usize,
+    pub sha1: Option<String>,
+    pub size: Option<i32>,
     pub url: String,
 }
 
@@ -44,7 +44,7 @@ pub struct Library {
 
 impl Library {
     /// return true if the Library is target lib which is required
-    /// example:
+    /// # Examples
     /// ```
     /// use launcher::api::official::{VersionManifest, Version,Libraries};
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
@@ -67,7 +67,7 @@ impl Library {
     }
 
     /// return true if is required native
-    /// example:
+    /// # Examples
     /// ```
     /// use launcher::api::official::{VersionManifest, Version,Libraries};
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
@@ -109,20 +109,20 @@ pub struct VersionManifest {
 
 impl VersionManifest {
     /// fetch mc official version manifest based on mirror
-    /// example:
+    /// # Examples
     /// ```
     /// use launcher::api::official::VersionManifest;
     /// let mirror = "https://bmclapi2.bangbang93.com/";
     /// let _ = VersionManifest::fetch(mirror).unwrap();
     /// ```
-    pub fn fetch(version_manifest_mirror: &str) -> anyhow::Result<VersionManifest> {
-        let url = version_manifest_mirror.to_owned() + "mc/game/version_manifest.json";
+    pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
+        let url = mirror.to_owned() + "mc/game/version_manifest.json";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
 
     /// fetch version list fromm manifest
-    /// example:
+    /// # Examples
     /// ```
     /// use launcher::api::official::VersionManifest;
     /// use launcher::config::VersionType;
@@ -156,7 +156,7 @@ impl VersionManifest {
     /// fetch url based on version
     /// attention: the url provided by official
     /// if version not exist then panic
-    /// example:
+    /// # Examples
     /// ```
     /// use launcher::api::official::VersionManifest;
     /// use launcher::config::VersionType;
@@ -201,7 +201,7 @@ pub struct Assets {
 
 impl Assets {
     /// fetch Assets from AssetIndex
-    /// example:
+    /// #Examples
     /// ```
     /// use launcher::api::official::VersionManifest;
     /// use launcher::api::official::Assets;
@@ -212,7 +212,7 @@ impl Assets {
     /// let version = Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
     /// let _ = Assets::fetch(&version.asset_index, assets_mirror).unwrap();
     /// ```
-    pub fn fetch(asset_index: &AssetIndex, mirror: &str) -> anyhow::Result<Assets> {
+    pub fn fetch(asset_index: &AssetIndex, mirror: &str) -> anyhow::Result<Self> {
         let url = asset_index.url.replace_domain(mirror);
         let client = reqwest::blocking::Client::new();
         let sha1 = &asset_index.sha1;
@@ -233,8 +233,8 @@ impl Assets {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Arguments {
-    pub game: serde_json::Value,
-    pub jvm: serde_json::Value,
+    pub game: Vec<serde_json::Value>,
+    pub jvm: Vec<serde_json::Value>,
 }
 
 /// version.json
@@ -263,20 +263,23 @@ pub struct Version {
     pub r#type: String,
 }
 
+pub trait MergeVersion {
+    fn official_libraries(&self) -> Option<Vec<Library>>;
+    fn main_class(&self) -> Option<String>;
+    fn arguments_game(&self) -> Option<Vec<serde_json::Value>>;
+    fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>>;
+}
+
 impl Version {
     /// fetch version json from VersionManifest
-    /// example:
+    /// #Examples
     /// ```
     /// use launcher::api::official::{VersionManifest, Version};
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     /// let _ = Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
     /// ```
-    pub fn fetch(
-        manifest: VersionManifest,
-        version: &str,
-        mirror: &str,
-    ) -> anyhow::Result<Version> {
+    pub fn fetch(manifest: VersionManifest, version: &str, mirror: &str) -> anyhow::Result<Self> {
         let url = manifest.url(version).replace_domain(mirror);
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
@@ -290,5 +293,48 @@ impl Version {
         let text = serde_json::to_string_pretty(self).unwrap();
         fs::create_dir_all(file.as_ref().parent().unwrap()).unwrap();
         fs::write(file, text).unwrap();
+    }
+
+    /// merge other api such as fabric prifile and official version json
+    /// # Examples
+    /// ```
+    /// use launcher::api::official;
+    /// struct TestProfile {};
+    /// impl official::MergeVersion for TestProfile {
+    ///     fn official_libraries(&self) -> Option<Vec<official::Library>> {
+    ///         None
+    ///     }
+    ///     fn main_class(&self) -> Option<String> {
+    ///         None
+    ///     }
+    ///     fn arguments_game(&self) -> Option<Vec<serde_json::Value>> {
+    ///         None
+    ///     }
+    ///     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
+    ///         None
+    ///     }
+    /// }
+    /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    /// let manifest = official::VersionManifest::fetch(manifest_mirror).unwrap();
+    /// let mut version = official::Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
+    /// let other = TestProfile{};
+    /// version.merge(other);
+    /// ```
+    pub fn merge<T>(&mut self, other: T)
+    where
+        T: MergeVersion,
+    {
+        if let Some(mut libs) = other.official_libraries() {
+            self.libraries.append(&mut libs);
+        }
+        if let Some(main_class) = other.main_class() {
+            self.main_class = main_class;
+        }
+        if let Some(mut arguments_game) = other.arguments_game() {
+            self.arguments.game.append(&mut arguments_game)
+        }
+        if let Some(mut arguments_jvm) = other.arguments_jvm() {
+            self.arguments.jvm.append(&mut arguments_jvm)
+        }
     }
 }

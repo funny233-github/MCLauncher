@@ -1,6 +1,7 @@
 use crate::{
     api::official::{Assets, Version, VersionManifest},
-    config::RuntimeConfig,
+    api::fabric::Profile,
+    config::{MCLoader, RuntimeConfig},
 };
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
@@ -14,12 +15,15 @@ use std::{
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
+    borrow::Cow,
 };
 
 const MAX_THREAD: usize = 64;
 
 trait Sha1Compare {
-    fn sha1_cmp(&self, sha1code: &str) -> Ordering;
+    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
+    where
+        C: AsRef<str> + Into<String>;
 }
 
 trait DomainReplacer<T> {
@@ -46,7 +50,10 @@ impl<T> Sha1Compare for T
 where
     T: AsRef<[u8]>,
 {
-    fn sha1_cmp(&self, sha1code: &str) -> Ordering {
+    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
+    where
+        C: AsRef<str> + Into<String>,
+    {
         let mut hasher = Sha1::new();
         hasher.update(self);
         let sha1 = hasher.finalize();
@@ -63,7 +70,7 @@ where
     }
 }
 
-#[derive(Debug,Default,Clone,PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub enum InstallType {
     #[default]
     Asset,
@@ -71,15 +78,15 @@ pub enum InstallType {
     Client,
 }
 
-#[derive(Debug,Default,Clone,PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct InstallTask {
     pub url: String,
-    pub sha1: String,
+    pub sha1: Option<String>,
     pub save_file: PathBuf,
     pub r#type: InstallType,
 }
 
-#[derive(Debug,Default,Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct TaskPool<T>
 where
     T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
@@ -87,7 +94,7 @@ where
     pub pool: Arc<Mutex<VecDeque<T>>>,
 }
 
-fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
+fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::blocking::Client::new();
     for _ in 0..5 {
         let send = client
@@ -96,7 +103,10 @@ fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
             .send();
         let data = send.and_then(|x| x.bytes());
         if let Ok(_data) = data {
-            if _data.sha1_cmp(sha1).is_eq() {
+            if sha1.is_none() {
+                return Ok(_data);
+            }
+            if _data.sha1_cmp(sha1.as_ref().unwrap()).is_eq() {
                 return Ok(_data);
             }
         };
@@ -108,11 +118,12 @@ fn fetch_bytes(url: &String, sha1: &str) -> anyhow::Result<bytes::Bytes> {
 
 impl FileInstall for InstallTask {
     fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
-        if !(self.save_file.path_exists()
-            && fs::read(&self.save_file)
-                .unwrap()
-                .sha1_cmp(&self.sha1)
-                .is_eq())
+        if self.sha1.is_none()
+            || !(self.save_file.path_exists()
+                && fs::read(&self.save_file)
+                    .unwrap()
+                    .sha1_cmp(self.sha1.as_ref().unwrap())
+                    .is_eq())
         {
             let data = fetch_bytes(&self.url, &self.sha1)?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
@@ -120,7 +131,9 @@ impl FileInstall for InstallTask {
         }
         bar.inc(1);
         match &self.r#type {
-            InstallType::Asset => bar.set_message(format!("Asset {} installed", self.sha1)),
+            InstallType::Asset => {
+                bar.set_message(format!("Asset {} installed", self.sha1.as_ref().unwrap()))
+            }
             InstallType::Library => bar.set_message(format!(
                 "library {:?} installed",
                 self.save_file.file_name().unwrap()
@@ -283,11 +296,19 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     println!("fetch version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
     println!("fetch version...");
-    let version = Version::fetch(
+    let mut version = Version::fetch(
         manifest,
         &config.game_version,
         &config.mirror.version_manifest,
     )?;
+    if let MCLoader::Fabric(v) = &config.loader {
+        println!("fetch fabric profile...");
+        let game_version = Cow::from(&config.game_version);
+        let loader_version = Cow::from(v);
+        let profile = Profile::fetch(&config.mirror.fabric_meta,game_version,loader_version)?;
+        version.merge(profile)
+    }
+
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
@@ -295,8 +316,6 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     version.install(&version_json_file);
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
-
-    let tasks = TaskPool::new();
 
     let game_dir = &config.game_dir;
     let game_version = &config.game_version;
@@ -308,6 +327,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
 
+    let tasks = TaskPool::new();
     tasks.append(&mut assets_installtask(
         game_dir,
         &config.mirror.assets,
@@ -316,6 +336,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     tasks.append(&mut libraries_installtask(
         game_dir,
         &config.mirror.libraries,
+        &config.mirror.fabric_maven,
         &version,
     )?);
     tasks.push_back(client_installtask(
@@ -332,6 +353,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 fn libraries_installtask(
     game_dir: &str,
     libraries_mirror: &str,
+    fabric_maven_mirror: &str,
     version_json: &Version,
 ) -> anyhow::Result<VecDeque<InstallTask>> {
     let libraries = &version_json.libraries;
@@ -339,11 +361,19 @@ fn libraries_installtask(
         .iter()
         .filter(|obj| obj.is_target_lib())
         .map(|x| {
-            let artifact_path = x.downloads.artifact.path.clone();
+            let artifact = &x.downloads.artifact;
+            let path = &artifact.path;
+            let mirror;
+            if artifact.url == "https://maven.fabricmc.net/" {
+                mirror = fabric_maven_mirror;
+            }
+            else {
+                mirror = libraries_mirror;
+            }
             InstallTask {
-                url: libraries_mirror.to_owned() + &artifact_path,
+                url: mirror.to_owned() + &path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(&artifact_path),
+                save_file: Path::new(game_dir).join("libraries").join(&path),
                 r#type: InstallType::Library,
             }
         })
@@ -363,7 +393,7 @@ fn client_installtask(
             .unwrap()
             .to_string()
             .replace_domain(client_mirror),
-        sha1: json_client["sha1"].as_str().unwrap().to_string(),
+        sha1: Some(json_client["sha1"].as_str().unwrap().to_string()),
         save_file: Path::new(game_dir)
             .join("versions")
             .join(game_version)
@@ -383,7 +413,7 @@ fn assets_installtask(
         .into_iter()
         .map(|x| InstallTask {
             url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
-            sha1: x.1.hash.clone(),
+            sha1: Some(x.1.hash.clone()),
             save_file: Path::new(game_dir)
                 .join("assets")
                 .join("objects")

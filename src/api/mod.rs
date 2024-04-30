@@ -68,4 +68,5 @@ where
     }
 }
 
+pub mod fabric;
 pub mod official;
