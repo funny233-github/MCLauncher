@@ -7,7 +7,7 @@ macro_rules! fetch {
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
-                .header(reqwest::header::USER_AGENT, "mc_launcher")
+                .header(reqwest::header::USER_AGENT, "github.com/funny233-github/MCLauncher")
                 .send();
             let data = send.and_then(|x| x.$type());
             if let Ok(_data) = data {
@@ -24,7 +24,7 @@ macro_rules! fetch {
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
-                .header(reqwest::header::USER_AGENT, "mc_launcher")
+                .header(reqwest::header::USER_AGENT, "github.com/funny233-github/MCLauncher")
                 .send();
             let data = send.and_then(|x| x.$type());
             if let Ok(_data) = data {
