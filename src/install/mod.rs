@@ -1,6 +1,6 @@
 use crate::{
-    api::official::{Assets, Version, VersionManifest},
     api::fabric::Profile,
+    api::official::{Assets, Version, VersionManifest},
     config::{MCLoader, RuntimeConfig},
 };
 use indicatif::{ProgressBar, ProgressStyle};
@@ -9,13 +9,13 @@ use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
 use std::{
+    borrow::Cow,
     cmp::Ordering,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
     sync::{mpsc, Arc, Mutex},
     thread,
-    borrow::Cow,
 };
 
 const MAX_THREAD: usize = 32;
@@ -305,7 +305,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         println!("fetch fabric profile...");
         let game_version = Cow::from(&config.game_version);
         let loader_version = Cow::from(v);
-        let profile = Profile::fetch(&config.mirror.fabric_meta,game_version,loader_version)?;
+        let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
         version.merge(profile)
     }
 
@@ -366,8 +366,7 @@ fn libraries_installtask(
             let mirror;
             if artifact.url == "https://maven.fabricmc.net/" {
                 mirror = fabric_maven_mirror;
-            }
-            else {
+            } else {
                 mirror = libraries_mirror;
             }
             InstallTask {

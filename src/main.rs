@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
+use launcher::api::fabric::Loader;
 use launcher::api::official::VersionManifest;
-use launcher::config::{MCMirror, RuntimeConfig, VersionType, MCLoader};
+use launcher::config::{MCLoader, MCMirror, RuntimeConfig, VersionType};
 use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
-use launcher::api::fabric::Loader;
 use log::error;
 use std::fs;
 use std::path::Path;
@@ -27,9 +27,7 @@ enum Command {
     List(ListSub),
 
     /// Change user name
-    Account {
-        name: String,
-    },
+    Account { name: String },
 
     /// Install Minecraft
     Install {
@@ -52,7 +50,7 @@ enum Command {
 enum ListSub {
     #[command(subcommand)]
     MC(VersionType),
-    Loader{
+    Loader {
         #[command(subcommand)]
         loader: Loaders,
     },
@@ -84,12 +82,12 @@ fn handle_args() -> anyhow::Result<()> {
             match sub {
                 ListSub::MC(_type) => {
                     let list = VersionManifest::fetch(&config.mirror.version_manifest)?.list(_type);
-                    println!("{:?}",list);
+                    println!("{:?}", list);
                 }
-                ListSub::Loader{loader:_loader} => {
+                ListSub::Loader { loader: _loader } => {
                     let l = Loader::fetch(&config.mirror.fabric_meta)?;
-                    let list:Vec<&str> = l.iter().map(|x|x.version.as_ref()).collect();
-                    println!("{:?}",list);
+                    let list: Vec<&str> = l.iter().map(|x| x.version.as_ref()).collect();
+                    println!("{:?}", list);
                 }
             }
         }
@@ -101,7 +99,7 @@ fn handle_args() -> anyhow::Result<()> {
             config.user_type = "offline".into();
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
         }
-        Command::Install { version ,fabric } => {
+        Command::Install { version, fabric } => {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
             if let Some(_version) = version {

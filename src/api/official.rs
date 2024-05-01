@@ -49,7 +49,7 @@ impl Library {
     /// use launcher::api::official::{VersionManifest, Version,Libraries};
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
-    /// let version = Version::fetch(manifest, "1.20.4", manifest_mirror).unwrap();
+    /// let version = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     /// let libraries = version.libraries;
     /// let targets = libraries.iter().filter(|x|x.is_target_lib()).map(|x|x.clone());
     /// let targets:Libraries = targets.collect();
@@ -57,9 +57,9 @@ impl Library {
     /// ```
     pub fn is_target_lib(&self) -> bool {
         if let Some(rule) = &self.rules {
-            let flag = rule
-                .iter()
-                .find(|x| x.os.clone().unwrap_or_default()["name"] == OS);
+            let flag = rule.iter().find(|x| {
+                x.os.is_none() || x.os.as_ref().and_then(|x| Some(x["name"] == OS)).unwrap()
+            });
             self.downloads.classifiers.is_none() && flag.is_some()
         } else {
             self.downloads.classifiers.is_none()

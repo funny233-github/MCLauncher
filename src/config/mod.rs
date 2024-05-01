@@ -36,7 +36,7 @@ impl MCMirror {
     }
 }
 
-#[derive(Debug,Serialize,Deserialize,Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MCLoader {
     None,
     Fabric(String),
