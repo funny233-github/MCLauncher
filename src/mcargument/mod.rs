@@ -1,5 +1,5 @@
-use mc_api::official::Version;
 use crate::config::RuntimeConfig;
+use mc_api::official::Version;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
 

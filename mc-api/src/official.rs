@@ -64,9 +64,9 @@ impl Library {
     /// ```
     pub fn is_target_lib(&self) -> bool {
         if let Some(rule) = &self.rules {
-            let flag = rule.iter().find(|x| {
-                x.os.is_none() || x.os.as_ref().and_then(|x| Some(x["name"] == OS)).unwrap()
-            });
+            let flag = rule
+                .iter()
+                .find(|x| x.os.is_none() || x.os.as_ref().map(|x| x["name"] == OS).unwrap());
             self.downloads.classifiers.is_none() && flag.is_some()
         } else {
             self.downloads.classifiers.is_none()
