@@ -48,7 +48,9 @@ jobs:
         run: cargo build --verbose --release
 
       - name: Run tests
-        run: cargo test --verbose
+        run: >
+          cargo test --verbose &&
+          cargo test --verbose --manifest-path mc-api/Cargo.toml
         # This may fail, but it does not take affects to our artifacts.
         continue-on-error: true
 
