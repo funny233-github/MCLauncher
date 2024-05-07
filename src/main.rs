@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
-use launcher::api::fabric::Loader;
-use launcher::api::official::VersionManifest;
+use mc_api::{fabric::Loader,official::VersionManifest};
 use launcher::config::{MCLoader, MCMirror, RuntimeConfig, VersionType};
 use launcher::install::install_mc;
 use launcher::runtime::gameruntime;
@@ -81,7 +80,7 @@ fn handle_args() -> anyhow::Result<()> {
             let config: RuntimeConfig = toml::from_str(&config)?;
             match sub {
                 ListSub::MC(_type) => {
-                    let list = VersionManifest::fetch(&config.mirror.version_manifest)?.list(_type);
+                    let list = VersionManifest::fetch(&config.mirror.version_manifest)?.list(_type.into());
                     println!("{:?}", list);
                 }
                 ListSub::Loader { loader: _loader } => {

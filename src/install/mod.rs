@@ -1,10 +1,10 @@
-use crate::{
-    api::fabric::Profile,
-    api::official::{Assets, Version, VersionManifest},
-    config::{MCLoader, RuntimeConfig},
-};
+use crate::config::{MCLoader, RuntimeConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
+use mc_api::{
+    fabric::Profile,
+    official::{Assets, Version, VersionManifest},
+};
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
@@ -363,16 +363,15 @@ fn libraries_installtask(
         .map(|x| {
             let artifact = &x.downloads.artifact;
             let path = &artifact.path;
-            let mirror;
-            if artifact.url == "https://maven.fabricmc.net/" {
-                mirror = fabric_maven_mirror;
+            let mirror = if artifact.url == "https://maven.fabricmc.net/" {
+                fabric_maven_mirror
             } else {
-                mirror = libraries_mirror;
-            }
+                libraries_mirror
+            };
             InstallTask {
                 url: mirror.to_owned() + &path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(&path),
+                save_file: Path::new(game_dir).join("libraries").join(path),
                 r#type: InstallType::Library,
             }
         })

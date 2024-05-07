@@ -1,4 +1,4 @@
-use crate::api::official::Version;
+use mc_api::official::Version;
 use crate::config::RuntimeConfig;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -100,7 +100,7 @@ impl RuntimeConfig {
         Ok(args)
     }
 
-    fn get_normal_args_from(&self, js: &mut Vec<serde_json::Value>) -> anyhow::Result<Vec<String>> {
+    fn get_normal_args_from(&self, js: &mut [serde_json::Value]) -> anyhow::Result<Vec<String>> {
         Ok(js
             .iter()
             .filter(|x| x.is_string())

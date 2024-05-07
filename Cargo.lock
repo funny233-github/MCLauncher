@@ -642,6 +642,7 @@ dependencies = [
  "hex",
  "indicatif",
  "log",
+ "mc-api",
  "regex",
  "reqwest",
  "serde",

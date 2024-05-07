@@ -1,6 +1,7 @@
 use clap::Subcommand;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+use mc_api::official;
 
 // runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -86,4 +87,14 @@ pub enum VersionType {
     All,
     Release,
     Snapshot,
+}
+
+impl From<VersionType> for official::VersionType {
+    fn from(r#type: VersionType) -> Self {
+        match r#type {
+            VersionType::All => official::VersionType::All,
+            VersionType::Release => official::VersionType::Release,
+            VersionType::Snapshot => official::VersionType::Snapshot,
+        }
+    }
 }
