@@ -14,11 +14,10 @@ use std::{
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex},
-    thread,
+    sync::{Arc, Mutex},
 };
 
-const MAX_THREAD: usize = 32;
+const MAX_THREAD: usize = 64;
 
 trait Sha1Compare {
     fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
@@ -35,7 +34,7 @@ trait PathExist {
 }
 
 pub trait FileInstall {
-    fn install(&self) -> anyhow::Result<()>;
+    fn install(&self) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
     fn bar_update(&self, bar: &ProgressBar);
 }
 
@@ -95,14 +94,18 @@ where
     pub pool: Arc<Mutex<VecDeque<T>>>,
 }
 
-fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
-    let client = reqwest::blocking::Client::new();
+async fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
+    let client = reqwest::Client::new();
     for _ in 0..5 {
         let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
-            .send();
-        let data = send.and_then(|x| x.bytes());
+            .send()
+            .await;
+        let data = match send {
+            Ok(_send) => _send.bytes().await,
+            Err(e) => Err(e),
+        };
         if let Ok(_data) = data {
             if sha1.is_none() {
                 return Ok(_data);
@@ -112,13 +115,13 @@ fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Byt
             }
         };
         warn!("install fail, then retry");
-        thread::sleep(std::time::Duration::from_secs(3));
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
     }
     Err(anyhow::anyhow!("download {url} fail"))
 }
 
 impl FileInstall for InstallTask {
-    fn install(&self) -> anyhow::Result<()> {
+    async fn install(&self) -> anyhow::Result<()> {
         if self.sha1.is_none()
             || !(self.save_file.path_exists()
                 && fs::read(&self.save_file)
@@ -126,7 +129,7 @@ impl FileInstall for InstallTask {
                     .sha1_cmp(self.sha1.as_ref().unwrap())
                     .is_eq())
         {
-            let data = fetch_bytes(&self.url, &self.sha1)?;
+            let data = fetch_bytes(&self.url, &self.sha1).await?;
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
             fs::write(&self.save_file, data).unwrap();
         }
@@ -149,7 +152,7 @@ impl FileInstall for InstallTask {
 
 impl<T> TaskPool<T>
 where
-    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
+    T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
     ///Constructs a new TaskPool
     ///# Panics
@@ -260,9 +263,9 @@ where
     //Execute all install task.
     //# Error
     //Return Error when install fail 5 times
-    pub fn install(self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let bar = ProgressBar::new(self.len() as u64);
+    #[tokio::main]
+    pub async fn install(self) -> anyhow::Result<()> {
+        let bar = Arc::new(ProgressBar::new(self.len() as u64));
         bar.set_style(
             ProgressStyle::with_template(
                 "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -272,25 +275,22 @@ where
         );
         let mut handles = Vec::with_capacity(MAX_THREAD);
         for _ in 0..MAX_THREAD {
-            let tasks_share = self.clone();
-            let bar_share = bar.clone();
-            let tx_share = tx.clone();
-            let thr = thread::spawn(move || loop {
-                if let Some(task) = tasks_share.pop_back() {
-                    tx_share.send(task.install()).unwrap();
-                    task.bar_update(&bar_share);
-                } else {
-                    return;
+            let share = self.pool.clone();
+            let bar = bar.clone();
+            handles.push(tokio::spawn(async move {
+                loop {
+                    let task = share.lock().unwrap().pop_back();
+                    if let Some(_task) = task {
+                        _task.install().await.unwrap();
+                        _task.bar_update(&bar);
+                    } else {
+                        return;
+                    }
                 }
-            });
-            handles.push(thr);
-        }
-        drop(tx);
-        for received in rx {
-            received?;
+            }))
         }
         for handle in handles {
-            handle.join().unwrap();
+            handle.await.unwrap();
         }
         Ok(())
     }
