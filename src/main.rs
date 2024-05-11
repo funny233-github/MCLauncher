@@ -109,6 +109,8 @@ fn handle_args() -> anyhow::Result<()> {
             if let Some(_fabric) = fabric {
                 println!("Set loader to {}", &_fabric);
                 config.loader = MCLoader::Fabric(_fabric);
+            } else {
+                config.loader = MCLoader::None;
             }
             fs::write(config_path, toml::to_string_pretty(&config)?)?;
             install_mc(&config)?;
