@@ -35,7 +35,8 @@ trait PathExist {
 }
 
 pub trait FileInstall {
-    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()>;
+    fn install(&self) -> anyhow::Result<()>;
+    fn bar_update(&self, bar: &ProgressBar);
 }
 
 impl DomainReplacer<String> for String {
@@ -117,7 +118,7 @@ fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Byt
 }
 
 impl FileInstall for InstallTask {
-    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
+    fn install(&self) -> anyhow::Result<()> {
         if self.sha1.is_none()
             || !(self.save_file.path_exists()
                 && fs::read(&self.save_file)
@@ -129,6 +130,9 @@ impl FileInstall for InstallTask {
             fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
             fs::write(&self.save_file, data).unwrap();
         }
+        Ok(())
+    }
+    fn bar_update(&self, bar: &ProgressBar) {
         bar.inc(1);
         match &self.r#type {
             InstallType::Asset => {
@@ -140,7 +144,6 @@ impl FileInstall for InstallTask {
             )),
             InstallType::Client => bar.set_message("client installed"),
         }
-        Ok(())
     }
 }
 
@@ -267,14 +270,15 @@ where
             .unwrap()
             .progress_chars("##-"),
         );
-        let mut handles = vec![];
+        let mut handles = Vec::with_capacity(MAX_THREAD);
         for _ in 0..MAX_THREAD {
             let tasks_share = self.clone();
             let bar_share = bar.clone();
             let tx_share = tx.clone();
             let thr = thread::spawn(move || loop {
                 if let Some(task) = tasks_share.pop_back() {
-                    tx_share.send(task.install(&bar_share)).unwrap();
+                    tx_share.send(task.install()).unwrap();
+                    task.bar_update(&bar_share);
                 } else {
                     return;
                 }
@@ -369,7 +373,7 @@ fn libraries_installtask(
                 libraries_mirror
             };
             InstallTask {
-                url: mirror.to_owned() + &path,
+                url: mirror.to_owned() + path,
                 sha1: x.downloads.artifact.sha1.clone(),
                 save_file: Path::new(game_dir).join("libraries").join(path),
                 r#type: InstallType::Library,
