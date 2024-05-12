@@ -399,6 +399,18 @@ fn libraries_installtask(
         .collect())
 }
 
+#[test]
+fn test_libraries_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let fabric_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
+    let tasks = libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
+    assert!(tasks.len() > 0);
+}
+
 fn native_installtask(
     game_dir: &str,
     mirror: &str,
@@ -420,6 +432,17 @@ fn native_installtask(
             }
         })
         .collect())
+}
+
+#[test]
+fn test_native_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
+    let tasks = native_installtask(game_dir,libraries_mirror,&version_json).unwrap();
+    assert!(tasks.len() > 0);
 }
 
 fn native_extract(game_dir: &str, version_json: &Version) {
@@ -478,6 +501,18 @@ fn client_installtask(
     })
 }
 
+#[test]
+fn test_client_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let game_version = "1.16.5";
+    let client_mirror = "https://bmclapi2.bangbang93.com/";
+    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
+    let task = client_installtask(game_dir,game_version,client_mirror,&version_json);
+    assert!(task.is_ok());
+}
+
 fn assets_installtask(
     game_dir: &str,
     assets_mirror: &str,
@@ -498,4 +533,17 @@ fn assets_installtask(
             r#type: InstallType::Asset,
         })
         .collect()
+}
+
+#[test]
+fn test_assets_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let assets_mirror = "https://bmclapi2.bangbang93.com/";
+    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
+    let assets_json = Assets::fetch(&version_json.asset_index,assets_mirror).unwrap();
+    let task = assets_installtask(game_dir,assets_mirror,&assets_json);
+    assert!(task.len() > 0);
+
 }
