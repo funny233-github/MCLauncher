@@ -3,7 +3,7 @@ use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
 use mc_api::{
     fabric::Profile,
-    official::{Assets, Version, VersionManifest},
+    official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
 use reqwest::header;
@@ -16,8 +16,18 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
+use zip::ZipArchive;
 
 const MAX_THREAD: usize = 64;
+
+#[cfg(target_os = "windows")]
+const OS: &str = "windows";
+
+#[cfg(target_os = "linux")]
+const OS: &str = "linux";
+
+#[cfg(target_os = "macos")]
+const OS: &str = "osx";
 
 trait Sha1Compare {
     fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
@@ -86,14 +96,6 @@ pub struct InstallTask {
     pub r#type: InstallType,
 }
 
-#[derive(Debug, Default, Clone)]
-pub struct TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
-{
-    pub pool: Arc<Mutex<VecDeque<T>>>,
-}
-
 async fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::Client::new();
     for _ in 0..5 {
@@ -148,6 +150,14 @@ impl FileInstall for InstallTask {
             InstallType::Client => bar.set_message("client installed"),
         }
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct TaskPool<T>
+where
+    T: FileInstall + std::marker::Send + std::marker::Sync + Clone + 'static,
+{
+    pub pool: Arc<Mutex<VecDeque<T>>>,
 }
 
 impl<T> TaskPool<T>
@@ -275,11 +285,11 @@ where
         );
         let mut handles = Vec::with_capacity(MAX_THREAD);
         for _ in 0..MAX_THREAD {
-            let share = self.pool.clone();
+            let share = self.clone();
             let bar = bar.clone();
             handles.push(tokio::spawn(async move {
                 loop {
-                    let task = share.lock().unwrap().pop_back();
+                    let task = share.pop_back();
                     if let Some(_task) = task {
                         _task.install().await.unwrap();
                         _task.bar_update(&bar);
@@ -297,16 +307,16 @@ where
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    println!("fetch version manifest...");
+    println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
-    println!("fetch version...");
+    println!("fetching version...");
     let mut version = Version::fetch(
         manifest,
         &config.game_version,
         &config.mirror.version_manifest,
     )?;
     if let MCLoader::Fabric(v) = &config.loader {
-        println!("fetch fabric profile...");
+        println!("fetching fabric profile...");
         let game_version = Cow::from(&config.game_version);
         let loader_version = Cow::from(v);
         let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
@@ -327,7 +337,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
-    println!("fetch assets...");
+    println!("fetching assets/libraries/natives...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
 
@@ -349,7 +359,14 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         &config.mirror.client,
         &version,
     )?);
+    tasks.append(&mut native_installtask(
+        game_dir,
+        &config.mirror.libraries,
+        &version,
+    )?);
     tasks.install()?;
+    println!("extracting natives ...");
+    native_extract(game_dir, &version);
 
     Ok(())
 }
@@ -380,6 +397,63 @@ fn libraries_installtask(
             }
         })
         .collect())
+}
+
+fn native_installtask(
+    game_dir: &str,
+    mirror: &str,
+    version_json: &Version,
+) -> anyhow::Result<VecDeque<InstallTask>> {
+    let libraries = &version_json.libraries;
+    Ok(libraries
+        .iter()
+        .filter(|obj| obj.is_target_native())
+        .map(|x| {
+            let key = x.natives.as_ref().unwrap().get(OS).unwrap();
+            let artifact: &Artifact = x.downloads.classifiers.as_ref().unwrap().get(key).unwrap();
+            let path = &artifact.path;
+            InstallTask {
+                url: mirror.to_owned() + path,
+                sha1: artifact.sha1.clone(),
+                save_file: Path::new(game_dir).join("libraries").join(path),
+                r#type: InstallType::Library,
+            }
+        })
+        .collect())
+}
+
+fn native_extract(game_dir: &str, version_json: &Version) {
+    let libraries = &version_json.libraries;
+    for lib in libraries {
+        if lib.is_target_native() {
+            let key = lib.natives.as_ref().unwrap().get(OS).unwrap();
+            let artifact: &Artifact = lib
+                .downloads
+                .classifiers
+                .as_ref()
+                .unwrap()
+                .get(key)
+                .unwrap();
+            let file_path = Path::new(game_dir).join("libraries").join(&artifact.path);
+            extract(game_dir, file_path);
+        }
+    }
+}
+
+fn extract(game_dir: &str, path: PathBuf) {
+    let jar_file = fs::File::open(path).unwrap();
+    let mut zip = ZipArchive::new(jar_file).unwrap();
+    let regex = Regex::new(r"\S+.so$").unwrap();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).unwrap();
+        if !entry.is_dir() && regex.captures(entry.name()).is_some() {
+            let file_path = format!("{}natives/{}", game_dir, entry.name());
+            let file_path = Path::new(&file_path);
+            fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+            let mut output = fs::File::create(file_path).unwrap();
+            std::io::copy(&mut entry, &mut output).unwrap();
+        }
+    }
 }
 
 fn client_installtask(
