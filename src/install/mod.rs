@@ -152,130 +152,21 @@ impl FileInstall for InstallTask {
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone + 'static,
 {
     pub pool: Arc<Mutex<VecDeque<T>>>,
+    bar: ProgressBar,
 }
 
-impl<T> TaskPool<T>
+impl<T> From<VecDeque<T>> for TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
-    ///Constructs a new TaskPool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask};
-    ///let pool:TaskPool<InstallTask> = TaskPool::new();
-    ///```
-    pub fn new() -> Self {
-        TaskPool {
-            pool: Arc::new(Mutex::new(VecDeque::new())),
-        }
-    }
-
-    ///Returns the number of task in the Pool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.len(), 0);
-    ///pool.push_back(task);
-    ///assert_eq!(pool.len(), 1);
-    ///```
-    pub fn len(&self) -> usize {
-        self.pool.lock().unwrap().len()
-    }
-
-    ///Returns `true` if the Pool is empty.
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask};
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert!(pool.is_empty());
-    ///pool.push_back(task);
-    ///assert!(!pool.is_empty());
-    ///```
-    pub fn is_empty(&self) -> bool {
-        self.pool.lock().unwrap().is_empty()
-    }
-
-    ///Removes the last task from the Pool and returns it, or `None` if
-    ///it is empty
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::path::Path;
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.pop_back(), None);
-    ///pool.push_back(task.clone());
-    ///assert_eq!(pool.pop_back(), Some(task));
-    pub fn pop_back(&self) -> Option<T> {
-        self.pool.lock().unwrap().pop_back()
-    }
-
-    ///Appends an task to the back of the Pool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::path::Path;
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.len(), 0);
-    ///pool.push_back(task);
-    ///assert_eq!(pool.len(), 1);
-    ///```
-    pub fn push_back(&self, value: T) {
-        self.pool.lock().unwrap().push_back(value)
-    }
-
-    ///Moves all the tasks of `other` into `self`, leaving `other` empty.
-    ///# Notice
-    ///The `other` must be a `&mut VecDeque<T>` type
-    ///# Panics
-    ///Panics if the new number of elements in self overflows a `usize`
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::collections::VecDeque;
-    ///use std::path::Path;
-    ///let mut pool1 = TaskPool::new();
-    ///let mut p = VecDeque::new();
-    ///let task = InstallTask::default();
-    ///p.push_back(task.clone());
-    ///pool1.push_back(task.clone());
-    ///pool1.append(&mut p);
-    ///assert_eq!(pool1.len(), 2);
-    ///```
-    pub fn append(&self, other: &mut VecDeque<T>) {
-        self.pool.lock().unwrap().append(other);
-    }
-
-    //Execute all install task.
-    //# Error
-    //Return Error when install fail 5 times
-    #[tokio::main]
-    pub async fn install(self) -> anyhow::Result<()> {
-        let bar = Arc::new(ProgressBar::new(self.len() as u64));
+    fn from(tasks: VecDeque<T>) -> Self {
+        let bar = ProgressBar::new(tasks.len() as u64);
         bar.set_style(
             ProgressStyle::with_template(
                 "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -283,16 +174,40 @@ where
             .unwrap()
             .progress_chars("##-"),
         );
+        Self {
+            pool: Arc::from(Mutex::from(tasks)),
+            bar,
+        }
+    }
+}
+
+impl<T> TaskPool<T>
+where
+    T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
+{
+    ///Removes the last task from the Pool and returns it, or `None` if
+    ///it is empty
+    ///# Panics
+    ///This function might panic when called if the lock is already held by
+    ///the current thread
+    fn pop_back(&self) -> Option<T> {
+        self.pool.lock().unwrap().pop_back()
+    }
+
+    //Execute all install task.
+    //# Error
+    //Return Error when install fail 5 times
+    #[tokio::main]
+    pub async fn install(self) -> anyhow::Result<()> {
         let mut handles = Vec::with_capacity(MAX_THREAD);
         for _ in 0..MAX_THREAD {
             let share = self.clone();
-            let bar = bar.clone();
             handles.push(tokio::spawn(async move {
                 loop {
                     let task = share.pop_back();
                     if let Some(_task) = task {
                         _task.install().await.unwrap();
-                        _task.bar_update(&bar);
+                        _task.bar_update(&share.bar);
                     } else {
                         return;
                     }
@@ -303,6 +218,21 @@ where
             handle.await.unwrap();
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod task_pool {
+    use super::{InstallTask, TaskPool};
+    use std::collections::VecDeque;
+
+    #[test]
+    fn test_pop_back() {
+        let task = InstallTask::default();
+        let tasks = VecDeque::from([task.clone()]);
+        let pool = TaskPool::from(tasks);
+        assert_eq!(pool.pop_back(), Some(task));
+        assert_eq!(pool.pop_back(), None);
     }
 }
 
@@ -341,12 +271,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
 
-    let tasks = TaskPool::new();
-    tasks.append(&mut assets_installtask(
-        game_dir,
-        &config.mirror.assets,
-        &assets,
-    ));
+    let mut tasks = assets_installtask(game_dir, &config.mirror.assets, &assets);
     tasks.append(&mut libraries_installtask(
         game_dir,
         &config.mirror.libraries,
@@ -364,7 +289,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         &config.mirror.libraries,
         &version,
     )?);
-    tasks.install()?;
+    TaskPool::from(tasks).install()?;
     println!("extracting natives ...");
     native_extract(game_dir, &version);
 
@@ -406,8 +331,9 @@ fn test_libraries_installtask() {
     let game_dir = "test_dir/";
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
     let fabric_mirror = "https://bmclapi2.bangbang93.com/maven/";
-    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
-    let tasks = libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let tasks =
+        libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
     assert!(tasks.len() > 0);
 }
 
@@ -440,8 +366,8 @@ fn test_native_installtask() {
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
-    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
-    let tasks = native_installtask(game_dir,libraries_mirror,&version_json).unwrap();
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let tasks = native_installtask(game_dir, libraries_mirror, &version_json).unwrap();
     assert!(tasks.len() > 0);
 }
 
@@ -508,8 +434,8 @@ fn test_client_installtask() {
     let game_dir = "test_dir/";
     let game_version = "1.16.5";
     let client_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
-    let task = client_installtask(game_dir,game_version,client_mirror,&version_json);
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let task = client_installtask(game_dir, game_version, client_mirror, &version_json);
     assert!(task.is_ok());
 }
 
@@ -541,9 +467,8 @@ fn test_assets_installtask() {
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
     let assets_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = Version::fetch(manifest,"1.16.5",manifest_mirror).unwrap();
-    let assets_json = Assets::fetch(&version_json.asset_index,assets_mirror).unwrap();
-    let task = assets_installtask(game_dir,assets_mirror,&assets_json);
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
+    let task = assets_installtask(game_dir, assets_mirror, &assets_json);
     assert!(task.len() > 0);
-
 }
