@@ -102,6 +102,11 @@ fn handle_args() -> anyhow::Result<()> {
         Command::Install { version, fabric } => {
             let config = fs::read_to_string("config.toml")?;
             let mut config: RuntimeConfig = toml::from_str(&config)?;
+            if version.is_none() && fabric.is_none() {
+                install_mc(&config)?;
+                return Ok(());
+            }
+
             if let Some(_version) = version {
                 println!("Set version to {}", &_version);
                 config.game_version = _version;
