@@ -2,7 +2,7 @@ use crate::config::{MCLoader, RuntimeConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
 use mc_api::{
-    fabric::Profile,
+    fabric::{Profile,Loader},
     official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
@@ -239,6 +239,11 @@ mod task_pool {
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
+
+    if !manifest.versions.iter().any(|x|x.id == config.game_version) {
+        return Err(anyhow::anyhow!("Cant' find the minecraft version {}", &config.game_version));
+    }
+
     println!("fetching version...");
     let mut version = Version::fetch(
         manifest,
@@ -246,6 +251,11 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         &config.mirror.version_manifest,
     )?;
     if let MCLoader::Fabric(v) = &config.loader {
+        println!("fetching fabric loaders version...");
+        let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
+        if !loaders.iter().any(|x|&x.version == v) {
+            return Err(anyhow::anyhow!("Cant' find the loader version {}", v));
+        }
         println!("fetching fabric profile...");
         let game_version = Cow::from(&config.game_version);
         let loader_version = Cow::from(v);
