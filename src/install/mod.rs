@@ -2,7 +2,7 @@ use crate::config::{MCLoader, RuntimeConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
 use mc_api::{
-    fabric::{Profile,Loader},
+    fabric::{Loader, Profile},
     official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
@@ -237,11 +237,34 @@ mod task_pool {
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
+    let version = fetch_version(config)?;
+
+    let version_json_file = Path::new(&config.game_dir)
+        .join("versions")
+        .join(&config.game_version)
+        .join(config.game_version.clone() + ".json");
+    version.install(&version_json_file);
+
+    let native_dir = Path::new(&config.game_dir).join("natives");
+    fs::create_dir_all(native_dir).unwrap_or(());
+
+    install_dependencies(config, &version)?;
+    Ok(())
+}
+
+fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
 
-    if !manifest.versions.iter().any(|x|x.id == config.game_version) {
-        return Err(anyhow::anyhow!("Cant' find the minecraft version {}", &config.game_version));
+    if !manifest
+        .versions
+        .iter()
+        .any(|x| x.id == config.game_version)
+    {
+        return Err(anyhow::anyhow!(
+            "Cant' find the minecraft version {}",
+            &config.game_version
+        ));
     }
 
     println!("fetching version...");
@@ -253,7 +276,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     if let MCLoader::Fabric(v) = &config.loader {
         println!("fetching fabric loaders version...");
         let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
-        if !loaders.iter().any(|x|&x.version == v) {
+        if !loaders.iter().any(|x| &x.version == v) {
             return Err(anyhow::anyhow!("Cant' find the loader version {}", v));
         }
         println!("fetching fabric profile...");
@@ -262,47 +285,38 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
         version.merge(profile)
     }
+    Ok(version)
+}
 
-    let version_json_file = Path::new(&config.game_dir)
-        .join("versions")
-        .join(&config.game_version)
-        .join(config.game_version.clone() + ".json");
-    version.install(&version_json_file);
-    let native_dir = Path::new(&config.game_dir).join("natives");
-    fs::create_dir_all(native_dir).unwrap_or(());
-
-    let game_dir = &config.game_dir;
-    let game_version = &config.game_version;
-    let asset_index_file = Path::new(game_dir)
+fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Result<()> {
+    let asset_index_file = Path::new(&config.game_dir)
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
     println!("fetching assets/libraries/natives...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
-
-    let mut tasks = assets_installtask(game_dir, &config.mirror.assets, &assets);
+    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets);
     tasks.append(&mut libraries_installtask(
-        game_dir,
+        &config.game_dir,
         &config.mirror.libraries,
         &config.mirror.fabric_maven,
-        &version,
+        version,
     )?);
     tasks.push_back(client_installtask(
-        game_dir,
-        game_version,
+        &config.game_dir,
+        &config.game_version,
         &config.mirror.client,
-        &version,
+        version,
     )?);
     tasks.append(&mut native_installtask(
-        game_dir,
+        &config.game_dir,
         &config.mirror.libraries,
-        &version,
+        version,
     )?);
     TaskPool::from(tasks).install()?;
     println!("extracting natives ...");
-    native_extract(game_dir, &version);
-
+    native_extract(&config.game_dir, version);
     Ok(())
 }
 
