@@ -29,7 +29,7 @@ const OS: &str = "linux";
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
-trait Sha1Compare {
+trait ShaCompare {
     fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
     where
         C: AsRef<str> + Into<String>;
@@ -56,7 +56,7 @@ impl DomainReplacer<String> for String {
     }
 }
 
-impl<T> Sha1Compare for T
+impl<T> ShaCompare for T
 where
     T: AsRef<[u8]>,
 {
@@ -86,6 +86,7 @@ pub enum InstallType {
     Asset,
     Library,
     Client,
+    Mods,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -148,6 +149,10 @@ impl FileInstall for InstallTask {
                 self.save_file.file_name().unwrap()
             )),
             InstallType::Client => bar.set_message("client installed"),
+            InstallType::Mods => bar.set_message(format!(
+                "mod {:?} installed",
+                self.save_file.file_name().unwrap()
+            )),
         }
     }
 }

@@ -1,11 +1,11 @@
 use clap::{Parser, Subcommand};
 use launcher::config::{MCLoader, MCMirror, RuntimeConfig, VersionType};
 use launcher::install::install_mc;
+use launcher::modmanage;
 use launcher::runtime::gameruntime;
 use log::error;
 use mc_api::{fabric::Loader, official::VersionManifest};
 use std::fs;
-use std::path::Path;
 use uuid::Uuid;
 
 #[derive(Parser, Debug)]
@@ -43,6 +43,10 @@ enum Command {
     /// Set Mirror of minecraft api
     #[command(subcommand)]
     Mirror(Mirrors),
+
+    /// Mod Manage
+    #[command(subcommand)]
+    Mod(ModManage),
 }
 
 #[derive(Subcommand, Debug)]
@@ -66,13 +70,25 @@ enum Mirrors {
     Bmclapi,
 }
 
+#[derive(Subcommand, Debug)]
+enum ModManage {
+    Add {
+        name: String,
+        version: Option<String>,
+    },
+    Remove {
+        name: String,
+    },
+    Update,
+    Install,
+}
+
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
-    let config_path = Path::new(".").join("config.toml");
     let normal_config = RuntimeConfig::default();
     match args.command {
         Command::Init => {
-            fs::write(config_path, toml::to_string_pretty(&normal_config)?)?;
+            fs::write("config.toml", toml::to_string_pretty(&normal_config)?)?;
             println!("Initialized empty game direction");
         }
         Command::List(sub) => {
@@ -97,7 +113,7 @@ fn handle_args() -> anyhow::Result<()> {
             config.user_name = _name;
             config.user_uuid = Uuid::new_v4().into();
             config.user_type = "offline".into();
-            fs::write(config_path, toml::to_string_pretty(&config)?)?;
+            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
         }
         Command::Install { version, fabric } => {
             let config = fs::read_to_string("config.toml")?;
@@ -117,7 +133,7 @@ fn handle_args() -> anyhow::Result<()> {
             } else {
                 config.loader = MCLoader::None;
             }
-            fs::write(config_path, toml::to_string_pretty(&config)?)?;
+            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
             install_mc(&config)?;
         }
         Command::Run => {
@@ -132,9 +148,19 @@ fn handle_args() -> anyhow::Result<()> {
                 Mirrors::Official => config.mirror = MCMirror::official_mirror(),
                 Mirrors::Bmclapi => config.mirror = MCMirror::bmcl_mirror(),
             }
-            fs::write(config_path, toml::to_string_pretty(&config)?)?;
+            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
             println!("Set official mirror");
         }
+        Command::Mod(option) => match option {
+            ModManage::Add { name, version } => {
+                modmanage::add(&name, version)?;
+            }
+            ModManage::Remove { name } => {
+                modmanage::remove(&name)?;
+            }
+            ModManage::Update => modmanage::update()?,
+            ModManage::Install => modmanage::install()?,
+        },
     }
     Ok(())
 }

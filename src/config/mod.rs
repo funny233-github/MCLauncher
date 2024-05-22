@@ -1,6 +1,8 @@
+use anyhow::Result;
 use clap::Subcommand;
 use mc_api::official;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 // runtime config
@@ -44,6 +46,11 @@ pub enum MCLoader {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModConfig {
+    pub version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeConfig {
     pub max_memory_size: u32,
     pub window_weight: u32,
@@ -56,6 +63,28 @@ pub struct RuntimeConfig {
     pub java_path: String,
     pub loader: MCLoader,
     pub mirror: MCMirror,
+    pub mods: Option<HashMap<String, ModConfig>>,
+}
+
+impl RuntimeConfig {
+    pub fn add_mod(&mut self, name: &str, modconf: ModConfig) {
+        if let Some(mods) = self.mods.as_mut() {
+            mods.insert(name.to_owned(), modconf);
+        } else {
+            self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
+        }
+    }
+    pub fn remove_mod(&mut self, name: &str) -> Result<()> {
+        if let Some(mods) = self.mods.as_mut() {
+            mods.remove(name).unwrap();
+            if mods.is_empty() {
+                self.mods = None;
+            }
+        } else {
+            return Err(anyhow::anyhow!("There is no mod to remove"));
+        }
+        Ok(())
+    }
 }
 
 impl Default for RuntimeConfig {
@@ -75,8 +104,9 @@ impl Default for RuntimeConfig {
                 + "/",
             game_version: "no_game_version".into(),
             java_path: "java".into(),
-            mirror: MCMirror::official_mirror(),
             loader: MCLoader::None,
+            mirror: MCMirror::official_mirror(),
+            mods: None,
         }
     }
 }
@@ -96,5 +126,39 @@ impl From<VersionType> for official::VersionType {
             VersionType::Release => official::VersionType::Release,
             VersionType::Snapshot => official::VersionType::Snapshot,
         }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize,Clone)]
+pub struct LockedModConfig {
+    pub file_name: String,
+    pub version: String,
+    pub url: String,
+    pub sha1: String,
+}
+
+#[derive(Debug, Deserialize, Serialize,Clone)]
+pub struct LockedConfig {
+    pub mods: Option<HashMap<String, LockedModConfig>>,
+}
+
+impl LockedConfig {
+    pub fn add_mod(&mut self, name: &str, modconf: LockedModConfig) {
+        if let Some(mods) = self.mods.as_mut() {
+            mods.insert(name.to_owned(), modconf);
+        } else {
+            self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
+        }
+    }
+    pub fn remove_mod(&mut self, name: &str) -> Result<()> {
+        if let Some(mods) = self.mods.as_mut() {
+            mods.remove(name).unwrap();
+            if mods.is_empty() {
+                self.mods = None;
+            }
+        } else {
+            return Err(anyhow::anyhow!("There is no mod to remove"));
+        }
+        Ok(())
     }
 }
