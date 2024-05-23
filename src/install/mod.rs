@@ -1,3 +1,4 @@
+use crate::asyncuntil::AsyncIterator;
 use crate::config::{MCLoader, RuntimeConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
@@ -14,7 +15,6 @@ use std::{
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
 };
 use zip::ZipArchive;
 
@@ -162,7 +162,7 @@ pub struct TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone + 'static,
 {
-    pub pool: Arc<Mutex<VecDeque<T>>>,
+    pub pool: VecDeque<T>,
     bar: ProgressBar,
 }
 
@@ -179,10 +179,7 @@ where
             .unwrap()
             .progress_chars("##-"),
         );
-        Self {
-            pool: Arc::from(Mutex::from(tasks)),
-            bar,
-        }
+        Self { pool: tasks, bar }
     }
 }
 
@@ -190,54 +187,21 @@ impl<T> TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
-    ///Removes the last task from the Pool and returns it, or `None` if
-    ///it is empty
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    fn pop_back(&self) -> Option<T> {
-        self.pool.lock().unwrap().pop_back()
-    }
-
     //Execute all install task.
     //# Error
     //Return Error when install fail 5 times
-    #[tokio::main]
-    pub async fn install(self) -> anyhow::Result<()> {
-        let mut handles = Vec::with_capacity(MAX_THREAD);
-        for _ in 0..MAX_THREAD {
-            let share = self.clone();
-            handles.push(tokio::spawn(async move {
-                loop {
-                    let task = share.pop_back();
-                    if let Some(_task) = task {
-                        _task.install().await.unwrap();
-                        _task.bar_update(&share.bar);
-                    } else {
-                        return;
-                    }
-                }
-            }))
-        }
-        for handle in handles {
-            handle.await.unwrap();
-        }
+    pub fn install(self) -> anyhow::Result<()> {
+        self.pool
+            .into_iter()
+            .map(|x| {
+                let share = self.bar.clone();
+                return async move {
+                    x.install().await.unwrap();
+                    x.bar_update(&share);
+                };
+            })
+            .async_execute(MAX_THREAD);
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod task_pool {
-    use super::{InstallTask, TaskPool};
-    use std::collections::VecDeque;
-
-    #[test]
-    fn test_pop_back() {
-        let task = InstallTask::default();
-        let tasks = VecDeque::from([task.clone()]);
-        let pool = TaskPool::from(tasks);
-        assert_eq!(pool.pop_back(), Some(task));
-        assert_eq!(pool.pop_back(), None);
     }
 }
 
