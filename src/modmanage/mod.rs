@@ -1,3 +1,4 @@
+use crate::asyncuntil::AsyncIterator;
 use crate::config::{LockedConfig, LockedModConfig, MCLoader, ModConfig, RuntimeConfig};
 use crate::install::{InstallTask, InstallType, TaskPool};
 use anyhow::Result;
@@ -10,7 +11,7 @@ use std::{
 };
 use toml;
 
-pub async fn fetch_version(
+async fn fetch_version(
     name: &str,
     version: Option<String>,
     config: &RuntimeConfig,
@@ -35,7 +36,7 @@ pub async fn fetch_version(
         .collect())
 }
 
-pub fn fetch_version_blocking(
+fn fetch_version_blocking(
     name: &str,
     version: Option<String>,
     config: &RuntimeConfig,
@@ -116,72 +117,8 @@ pub fn remove(name: &str) -> Result<()> {
     Ok(())
 }
 
-const MAX_THREAD: usize = 20;
-
-#[tokio::main]
-pub async fn update() -> Result<()> {
-    let config = fs::read_to_string("config.toml")?;
-    let mut config: RuntimeConfig = toml::from_str(&config)?;
-    let config_arc = Arc::new(config.clone());
-    let lockedconfig = fs::read_to_string("config.lock")?;
-    let mut lockedconfig: LockedConfig = toml::from_str(&lockedconfig)?;
-
-    let config_mods = Arc::new(Mutex::new(HashMap::new()));
-    let lockedconfig_mods = Arc::new(Mutex::new(HashMap::new()));
-
-    if let Some(mods) = config_arc.mods.clone() {
-        let mods: VecDeque<(String, ModConfig)> = mods.into_iter().collect();
-        let mods = Arc::new(Mutex::new(mods));
-        let mut handles = Vec::with_capacity(MAX_THREAD);
-
-        for _ in 0..MAX_THREAD {
-            let share = mods.clone();
-            let config_share = config_arc.clone();
-            let config_mods_share = config_mods.clone();
-            let lockedconfig_mods_share = lockedconfig_mods.clone();
-
-            handles.push(tokio::spawn(async move {
-                loop {
-                    let simgle_mod = share.lock().unwrap().pop_back();
-                    if let Some((name, _)) = simgle_mod {
-                        let versions = fetch_version(&name, None, &config_share).await.unwrap();
-                        let version = &versions[0];
-
-                        let modconf = ModConfig {
-                            version: version.version_number.clone(),
-                        };
-                        let locked_modconf = LockedModConfig {
-                            file_name: version.files[0].filename.clone(),
-                            version: version.version_number.clone(),
-                            url: version.files[0].url.clone(),
-                            sha1: version.files[0].hashes.sha1.clone(),
-                        };
-
-                        config_mods_share
-                            .lock()
-                            .unwrap()
-                            .insert(name.clone(), modconf);
-                        lockedconfig_mods_share
-                            .lock()
-                            .unwrap()
-                            .insert(name, locked_modconf);
-                    } else {
-                        break;
-                    }
-                }
-            }))
-        }
-        for handle in handles {
-            handle.await.unwrap();
-        }
-    }
-    config.mods = Some(config_mods.lock().unwrap().to_owned());
-    lockedconfig.mods = Some(lockedconfig_mods.lock().unwrap().to_owned());
-    let config = toml::to_string_pretty(&config)?;
-    let lockedconfig = toml::to_string_pretty(&lockedconfig)?;
-    fs::write("config.toml", config)?;
-    fs::write("config.lock", lockedconfig)?;
-    Ok(())
+pub fn update() -> Result<()> {
+    sync_or_update(false)
 }
 
 fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<InstallTask> {
@@ -217,5 +154,77 @@ pub fn install() -> Result<()> {
     );
     let tasks = mod_installtasks(&lockedconfig.mods.unwrap());
     TaskPool::from(tasks).install()?;
+    Ok(())
+}
+
+pub fn sync() -> Result<()> {
+    sync_or_update(true)
+}
+
+fn sync_or_update(sync: bool) -> Result<()> {
+    let config = fs::read_to_string("config.toml")?;
+    let mut config: RuntimeConfig = toml::from_str(&config)?;
+    let config_arc = Arc::new(config.clone());
+    let mut lockedconfig: LockedConfig;
+    if fs::metadata("config.lock").is_ok() {
+        let _lockedconfig = fs::read_to_string("config.lock")?;
+        lockedconfig = toml::from_str(&_lockedconfig)?;
+    }else {
+        lockedconfig = LockedConfig::default();
+    }
+
+    let config_mods = Arc::new(Mutex::new(HashMap::new()));
+    let lockedconfig_mods = Arc::new(Mutex::new(HashMap::new()));
+
+    if let Some(mods) = config_arc.mods.clone() {
+        mods.into_iter()
+            .map(|x| {
+                let config_share = config_arc.clone();
+                let config_mods_share = config_mods.clone();
+                let lockedconfig_mods_share = lockedconfig_mods.clone();
+                return async move {
+                    let (name, conf) = x;
+                    let versions;
+                    if sync {
+                        versions = fetch_version(&name, Some(conf.version), &config_share)
+                            .await
+                            .unwrap();
+                    } else {
+                        versions = fetch_version(&name, None, &config_share).await.unwrap();
+                    }
+                    let version = &versions[0];
+
+                    let modconf = ModConfig {
+                        version: version.version_number.clone(),
+                    };
+                    let locked_modconf = LockedModConfig {
+                        file_name: version.files[0].filename.clone(),
+                        version: version.version_number.clone(),
+                        url: version.files[0].url.clone(),
+                        sha1: version.files[0].hashes.sha1.clone(),
+                    };
+                    config_mods_share
+                        .lock()
+                        .unwrap()
+                        .insert(name.clone(), modconf);
+                    lockedconfig_mods_share
+                        .lock()
+                        .unwrap()
+                        .insert(name, locked_modconf);
+                };
+            })
+            .async_execute(10);
+    }
+    config.mods = Some(config_mods.lock().unwrap().to_owned());
+    lockedconfig.mods = Some(lockedconfig_mods.lock().unwrap().to_owned());
+    let config = toml::to_string_pretty(&config)?;
+    let lockedconfig = toml::to_string_pretty(&lockedconfig)?;
+    fs::write("config.toml", config)?;
+    fs::write("config.lock", lockedconfig)?;
+    if sync {
+        println!("mod config synced");
+    } else {
+        println!("mod config updated");
+    }
     Ok(())
 }

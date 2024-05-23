@@ -129,7 +129,7 @@ impl From<VersionType> for official::VersionType {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize,Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LockedModConfig {
     pub file_name: String,
     pub version: String,
@@ -137,7 +137,7 @@ pub struct LockedModConfig {
     pub sha1: String,
 }
 
-#[derive(Debug, Deserialize, Serialize,Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct LockedConfig {
     pub mods: Option<HashMap<String, LockedModConfig>>,
 }

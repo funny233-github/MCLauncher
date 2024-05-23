@@ -81,6 +81,7 @@ enum ModManage {
     },
     Update,
     Install,
+    Sync,
 }
 
 fn handle_args() -> anyhow::Result<()> {
@@ -160,6 +161,7 @@ fn handle_args() -> anyhow::Result<()> {
             }
             ModManage::Update => modmanage::update()?,
             ModManage::Install => modmanage::install()?,
+            ModManage::Sync => modmanage::sync()?,
         },
     }
     Ok(())
