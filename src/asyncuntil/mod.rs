@@ -19,7 +19,7 @@ pub trait AsyncIterator {
     ///     println!("{}",x);
     ///}).async_execute(10);
     ///```
-    #[tokio::main]
+    #[tokio::main(flavor = "current_thread")]
     async fn async_execute<F>(self, task_num: usize)
     where
         Self: Iterator<Item = F> + Sized,

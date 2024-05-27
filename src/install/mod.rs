@@ -195,10 +195,10 @@ where
             .into_iter()
             .map(|x| {
                 let share = self.bar.clone();
-                return async move {
+                async move {
                     x.install().await.unwrap();
                     x.bar_update(&share);
-                };
+                }
             })
             .async_execute(MAX_THREAD);
         Ok(())

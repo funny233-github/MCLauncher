@@ -1,8 +1,12 @@
+use crate::modmanage::{fetch_version, fetch_version_blocking};
 use anyhow::Result;
 use clap::Subcommand;
 use mc_api::official;
+use modrinth_api::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
 use uuid::Uuid;
 
 // runtime config
@@ -47,7 +51,26 @@ pub enum MCLoader {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModConfig {
-    pub version: String,
+    pub version: Option<String>,
+    pub file_name: Option<String>,
+}
+
+impl From<Version> for ModConfig {
+    fn from(version: Version) -> Self {
+        Self {
+            version: Some(version.version_number),
+            file_name: None,
+        }
+    }
+}
+
+impl ModConfig {
+    pub fn from_local(file_name: &str) -> Self {
+        Self {
+            version: None,
+            file_name: Some(file_name.to_owned()),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -74,16 +97,19 @@ impl RuntimeConfig {
             self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
         }
     }
-    pub fn remove_mod(&mut self, name: &str) -> Result<()> {
+
+    pub fn add_local_mod(&mut self, file_name: &str) {
+        let modconf = ModConfig::from_local(file_name);
+        self.add_mod(file_name, modconf);
+    }
+
+    pub fn remove_mod(&mut self, name: &str) {
         if let Some(mods) = self.mods.as_mut() {
-            mods.remove(name).unwrap();
+            mods.remove(name);
             if mods.is_empty() {
                 self.mods = None;
             }
-        } else {
-            return Err(anyhow::anyhow!("There is no mod to remove"));
         }
-        Ok(())
     }
 }
 
@@ -132,9 +158,31 @@ impl From<VersionType> for official::VersionType {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct LockedModConfig {
     pub file_name: String,
-    pub version: String,
-    pub url: String,
-    pub sha1: String,
+    pub version: Option<String>,
+    pub url: Option<String>,
+    pub sha1: Option<String>,
+}
+
+impl From<Version> for LockedModConfig {
+    fn from(mut version: Version) -> Self {
+        let file = version.files.pop().unwrap();
+        Self {
+            file_name: file.filename,
+            version: Some(version.version_number),
+            url: Some(file.url),
+            sha1: Some(file.hashes.sha1),
+        }
+    }
+}
+impl LockedModConfig {
+    pub fn from_local(file_name: &str) -> Self {
+        Self {
+            file_name: file_name.to_owned(),
+            version: None,
+            url: None,
+            sha1: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
@@ -150,15 +198,111 @@ impl LockedConfig {
             self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
         }
     }
+
+    pub fn add_local_mod(&mut self, name: &str) {
+        let modconf = LockedModConfig {
+            file_name: name.to_owned(),
+            version: None,
+            url: None,
+            sha1: None,
+        };
+        self.add_mod(name, modconf);
+    }
+
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         if let Some(mods) = self.mods.as_mut() {
-            mods.remove(name).unwrap();
+            mods.remove(name);
             if mods.is_empty() {
                 self.mods = None;
             }
-        } else {
-            return Err(anyhow::anyhow!("There is no mod to remove"));
         }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ConfigHandler {
+    pub config: RuntimeConfig,
+    pub locked_config: LockedConfig,
+}
+
+impl ConfigHandler {
+    pub fn new() -> Result<Self> {
+        let config = fs::read_to_string("config.toml")?;
+        let locked_config = if fs::metadata("config.lock").is_ok() {
+            let data = fs::read_to_string("config.lock")?;
+            toml::from_str(&data)?
+        } else {
+            LockedConfig::default()
+        };
+        Ok(ConfigHandler {
+            config: toml::from_str(&config)?,
+            locked_config,
+        })
+    }
+
+    pub fn write(&self) -> Result<()> {
+        fs::write("config.toml", toml::to_string_pretty(&self.config)?)?;
+        fs::write("config.lock", toml::to_string_pretty(&self.locked_config)?)?;
+        Ok(())
+    }
+
+    pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
+        // Error when file not found
+        let path = Path::new("mods").join(name);
+        fs::metadata(path)?;
+
+        self.config.add_local_mod(name);
+        self.locked_config.add_local_mod(name);
+
+        Ok(())
+    }
+
+    pub fn add_mod_unlocal_blocking(&mut self, name: &str, version: &Option<String>) -> Result<()> {
+        let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
+
+        let modconf = ModConfig::from(version.clone());
+        self.config.add_mod(name, modconf);
+
+        let locked_modconf = LockedModConfig::from(version);
+        self.locked_config.add_mod(name, locked_modconf);
+        Ok(())
+    }
+
+    pub async fn add_mod_unlocal(&mut self, name: &str, version: &Option<String>) -> Result<()> {
+        let version = fetch_version(name, version, &self.config).await?.remove(0);
+
+        let modconf = ModConfig::from(version.clone());
+        self.config.add_mod(name, modconf);
+
+        let locked_modconf = LockedModConfig::from(version);
+        self.locked_config.add_mod(name, locked_modconf);
+        Ok(())
+    }
+
+    pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
+        let modconf = ModConfig::from(version.clone());
+        self.config.add_mod(name, modconf);
+
+        let locked_modconf = LockedModConfig::from(version);
+        self.locked_config.add_mod(name, locked_modconf);
+        Ok(())
+    }
+
+    /// # Panic
+    /// panic when can't found mod in config.lock
+    pub fn remove_mod(&mut self, name: &str) -> Result<()> {
+        let file_path =
+            Path::new("mods").join(&self.locked_config.mods.as_ref().unwrap()[name].file_name);
+        // the config independent with file of mod
+        // so the file of mod may not exist
+        if fs::metadata(&file_path).is_ok() {
+            fs::remove_file(file_path)?;
+        }
+
+        self.config.remove_mod(name);
+        self.locked_config.remove_mod(name)?;
+
         Ok(())
     }
 }

@@ -75,6 +75,8 @@ enum ModManage {
     Add {
         name: String,
         version: Option<String>,
+        #[arg(long)]
+        local: bool,
     },
     Remove {
         name: String,
@@ -153,12 +155,12 @@ fn handle_args() -> anyhow::Result<()> {
             println!("Set official mirror");
         }
         Command::Mod(option) => match option {
-            ModManage::Add { name, version } => {
-                modmanage::add(&name, version)?;
-            }
-            ModManage::Remove { name } => {
-                modmanage::remove(&name)?;
-            }
+            ModManage::Add {
+                name,
+                version,
+                local,
+            } => modmanage::add(&name, version, local)?,
+            ModManage::Remove { name } => modmanage::remove(&name)?,
             ModManage::Update => modmanage::update()?,
             ModManage::Install => modmanage::install()?,
             ModManage::Sync => modmanage::sync()?,
