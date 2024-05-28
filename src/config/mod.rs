@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use uuid::Uuid;
+use walkdir::WalkDir;
 
 // runtime config
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -227,7 +228,7 @@ pub struct ConfigHandler {
 }
 
 impl ConfigHandler {
-    pub fn new() -> Result<Self> {
+    pub fn read() -> Result<Self> {
         let config = fs::read_to_string("config.toml")?;
         let locked_config = if fs::metadata("config.lock").is_ok() {
             let data = fs::read_to_string("config.lock")?;
@@ -243,6 +244,16 @@ impl ConfigHandler {
 
     pub fn write(&self) -> Result<()> {
         fs::write("config.toml", toml::to_string_pretty(&self.config)?)?;
+        fs::write("config.lock", toml::to_string_pretty(&self.locked_config)?)?;
+        Ok(())
+    }
+
+    pub fn write_config(&self) -> Result<()> {
+        fs::write("config.toml", toml::to_string_pretty(&self.config)?)?;
+        Ok(())
+    }
+
+    pub fn write_locked_config(&self) -> Result<()> {
         fs::write("config.lock", toml::to_string_pretty(&self.locked_config)?)?;
         Ok(())
     }
@@ -303,6 +314,62 @@ impl ConfigHandler {
         self.config.remove_mod(name);
         self.locked_config.remove_mod(name)?;
 
+        Ok(())
+    }
+
+    pub fn disable_unuse_mods(&self) -> Result<()> {
+        let mut file_names = self
+            .locked_config
+            .mods
+            .as_ref()
+            .map(|x| x.iter().map(|(_, x)| &x.file_name));
+
+        for entry in WalkDir::new("mods").into_iter().filter(|x| {
+            let name = x.as_ref().unwrap().file_name().to_str().unwrap();
+            name != "mods" && (!name.ends_with(".unuse"))
+        }) {
+            let name = &entry?.file_name().to_str().unwrap().to_owned();
+
+            if !(file_names.is_some() && file_names.as_mut().unwrap().any(|x| x == name)) {
+                let path = Path::new("mods").join(name);
+                let new_name = format!("{}.unuse", name);
+                let new_path = Path::new("mods").join(new_name);
+                fs::rename(path, new_path)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn enable_used_mods(&self) -> Result<()> {
+        let mut file_names = self
+            .locked_config
+            .mods
+            .as_ref()
+            .map(|x| x.iter().map(|(_, x)| &x.file_name));
+
+        for entry in WalkDir::new("mods").into_iter().filter(|x| {
+            x.as_ref()
+                .unwrap()
+                .file_name()
+                .to_str()
+                .unwrap()
+                .ends_with(".unuse")
+        }) {
+            let name = &entry?.file_name().to_str().unwrap().to_owned();
+
+            if file_names.is_some()
+                && file_names
+                    .as_mut()
+                    .unwrap()
+                    .any(|x| &format!("{}.unuse", x) == name)
+            {
+                let path = Path::new("mods").join(name);
+                let mut new_name = name.clone();
+                new_name.truncate(name.len() - 6);
+                let new_path = Path::new("mods").join(new_name);
+                fs::rename(path, new_path)?;
+            }
+        }
         Ok(())
     }
 }

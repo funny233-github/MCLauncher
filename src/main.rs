@@ -77,13 +77,22 @@ enum ModManage {
         version: Option<String>,
         #[arg(long)]
         local: bool,
+        #[arg(long)]
+        config_only: bool,
     },
     Remove {
         name: String,
     },
-    Update,
+    Update {
+        #[arg(long)]
+        config_only: bool,
+    },
     Install,
-    Sync,
+    Sync {
+        #[arg(long)]
+        config_only: bool,
+    },
+    Clean,
 }
 
 fn handle_args() -> anyhow::Result<()> {
@@ -159,11 +168,13 @@ fn handle_args() -> anyhow::Result<()> {
                 name,
                 version,
                 local,
-            } => modmanage::add(&name, version, local)?,
+                config_only,
+            } => modmanage::add(&name, version, local, config_only)?,
             ModManage::Remove { name } => modmanage::remove(&name)?,
-            ModManage::Update => modmanage::update()?,
+            ModManage::Update { config_only } => modmanage::update(config_only)?,
             ModManage::Install => modmanage::install()?,
-            ModManage::Sync => modmanage::sync()?,
+            ModManage::Sync { config_only } => modmanage::sync(config_only)?,
+            ModManage::Clean => modmanage::clean()?,
         },
     }
     Ok(())

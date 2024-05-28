@@ -6,9 +6,11 @@ use indicatif::{ProgressBar, ProgressStyle};
 use modrinth_api::{Version, Versions};
 use std::{
     collections::{HashMap, VecDeque},
+    fs,
     path::Path,
     sync::{Arc, RwLock},
 };
+use walkdir::WalkDir;
 
 pub async fn fetch_version(
     name: &str,
@@ -60,8 +62,8 @@ pub fn fetch_version_blocking(
         .collect())
 }
 
-pub fn add(name: &str, version: Option<String>, local: bool) -> Result<()> {
-    let mut config_handler = ConfigHandler::new()?;
+pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
+    let mut config_handler = ConfigHandler::read()?;
     let message = if local {
         config_handler.add_mod_local(name)?;
         format!("Add local mod {} successful", name)
@@ -69,13 +71,21 @@ pub fn add(name: &str, version: Option<String>, local: bool) -> Result<()> {
         config_handler.add_mod_unlocal_blocking(name, &version)?;
         format!("Add mod {} surcessful", name)
     };
+
     config_handler.write()?;
+    if !config_only {
+        install()?;
+    }
+
+    let handle = ConfigHandler::read()?;
+    handle.disable_unuse_mods()?;
+    handle.enable_used_mods()?;
     println!("{}", message);
     Ok(())
 }
 
 pub fn remove(name: &str) -> Result<()> {
-    let mut config_handler = ConfigHandler::new()?;
+    let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
     config_handler.write()?;
 
@@ -83,8 +93,12 @@ pub fn remove(name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn update() -> Result<()> {
-    sync_or_update(false)
+pub fn update(config_only: bool) -> Result<()> {
+    sync_or_update(false)?;
+    if !config_only {
+        install()?;
+    }
+    Ok(())
 }
 
 fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<InstallTask> {
@@ -102,9 +116,11 @@ fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<Insta
         .collect()
 }
 
-// TODO: update file when install
 pub fn install() -> Result<()> {
-    let mut config_handler = ConfigHandler::new()?;
+    let mut config_handler = ConfigHandler::read()?;
+    if config_handler.locked_config.mods.is_none() {
+        return Ok(());
+    }
     config_handler.locked_config.mods = Some(
         config_handler
             .locked_config
@@ -127,8 +143,15 @@ pub fn install() -> Result<()> {
     Ok(())
 }
 
-pub fn sync() -> Result<()> {
-    sync_or_update(true)
+pub fn sync(config_only: bool) -> Result<()> {
+    sync_or_update(true)?;
+    if !config_only {
+        install()?;
+    }
+    let handle = ConfigHandler::read()?;
+    handle.disable_unuse_mods()?;
+    handle.enable_used_mods()?;
+    Ok(())
 }
 
 fn progress_bar(len: usize) -> ProgressBar {
@@ -144,9 +167,9 @@ fn progress_bar(len: usize) -> ProgressBar {
 }
 
 fn sync_or_update(sync: bool) -> Result<()> {
-    let config_handler = ConfigHandler::new()?;
+    let mut config_handler = ConfigHandler::read()?;
     if let Some(mods) = config_handler.config.mods.clone() {
-        let origin_config = Arc::new(ConfigHandler::new()?);
+        let origin_config = Arc::new(ConfigHandler::read()?);
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len());
         mods.into_iter()
@@ -156,6 +179,12 @@ fn sync_or_update(sync: bool) -> Result<()> {
                 let bar_share = bar.clone();
                 async move {
                     let (name, conf) = x;
+                    if let Some(mods) = &origin_config_share.locked_config.mods.as_ref() {
+                        if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
+                            return;
+                        }
+                    }
+
                     if let Some(ver) = conf.version {
                         let version = {
                             let config = &origin_config_share.config;
@@ -177,13 +206,40 @@ fn sync_or_update(sync: bool) -> Result<()> {
                 }
             })
             .async_execute(10);
-        println!("{:#?}", config_handler);
-        config_handler.write().unwrap().write()?;
+
+        if sync {
+            config_handler.write().unwrap().write_locked_config()?;
+        } else {
+            config_handler.write().unwrap().write()?;
+        }
+    } else {
+        config_handler.locked_config.mods = None;
+        if sync {
+            config_handler.write_locked_config()?;
+        } else {
+            config_handler.write()?;
+        }
     }
+
     if sync {
         println!("mod config synced");
     } else {
         println!("mod config updated");
+    }
+    Ok(())
+}
+
+pub fn clean() -> Result<()> {
+    for entry in WalkDir::new("mods").into_iter().filter(|x| {
+        x.as_ref()
+            .unwrap()
+            .file_name()
+            .to_str()
+            .unwrap()
+            .ends_with(".unuse")
+    }) {
+        let file_path = entry?.path().to_owned();
+        fs::remove_file(file_path)?;
     }
     Ok(())
 }
