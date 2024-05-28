@@ -166,7 +166,7 @@ pub struct LockedModConfig {
 
 impl From<Version> for LockedModConfig {
     fn from(mut version: Version) -> Self {
-        let file = version.files.pop().unwrap();
+        let file = version.files.remove(0);
         Self {
             file_name: file.filename,
             version: Some(version.version_number),
@@ -271,6 +271,8 @@ impl ConfigHandler {
         Ok(())
     }
 
+    /// # Error
+    /// Error when file mods/name not found
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
         // Error when file not found
         let path = Path::new("mods").join(name);
@@ -348,7 +350,6 @@ impl ConfigHandler {
                 let path = Path::new("mods").join(name);
                 let new_name = format!("{}.unuse", name);
                 let new_path = Path::new("mods").join(new_name);
-                println!("path:{:?}\nnew_path:{:?}", path, new_path);
                 fs::rename(path, new_path)?;
             }
         }

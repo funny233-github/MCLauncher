@@ -98,6 +98,9 @@ pub fn update(config_only: bool) -> Result<()> {
     if !config_only {
         install()?;
     }
+    let handle = ConfigHandler::read()?;
+    handle.disable_unuse_mods()?;
+    handle.enable_used_mods()?;
     Ok(())
 }
 
@@ -118,6 +121,7 @@ fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<Insta
 }
 
 pub fn install() -> Result<()> {
+    // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config.mods.is_none() {
         return Ok(());

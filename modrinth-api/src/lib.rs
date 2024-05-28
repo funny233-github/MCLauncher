@@ -2,20 +2,20 @@ use reqwest::blocking::Client;
 use reqwest::Result;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Serialize,Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Hashes {
     pub sha1: String,
     pub sha512: String,
 }
 
-#[derive(Debug, Deserialize, Serialize,Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VersionFile {
     pub filename: String,
     pub hashes: Hashes,
     pub url: String,
 }
 
-#[derive(Debug, Deserialize, Serialize,Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Version {
     pub name: String,
     pub version_number: String,
@@ -53,7 +53,9 @@ impl Versions {
                 "https://api.modrinth.com/v2/project/{}/version",
                 slug
             ))
-            .send().await?
-            .json().await
+            .send()
+            .await?
+            .json()
+            .await
     }
 }
