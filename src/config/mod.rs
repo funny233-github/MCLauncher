@@ -230,6 +230,19 @@ pub struct ConfigHandler {
 impl ConfigHandler {
     pub fn read() -> Result<Self> {
         let config = fs::read_to_string("config.toml")?;
+        let config: RuntimeConfig = toml::from_str(&config)?;
+
+        if let Some(mods) = config.mods.as_ref() {
+            for (name, conf) in mods {
+                if conf.file_name.is_some() && conf.version.is_some() {
+                    return Err(anyhow::anyhow!(
+                        "The mod {} have file_name and version in same time!",
+                        name
+                    ));
+                }
+            }
+        }
+
         let locked_config = if fs::metadata("config.lock").is_ok() {
             let data = fs::read_to_string("config.lock")?;
             toml::from_str(&data)?
@@ -237,7 +250,7 @@ impl ConfigHandler {
             LockedConfig::default()
         };
         Ok(ConfigHandler {
-            config: toml::from_str(&config)?,
+            config,
             locked_config,
         })
     }
@@ -318,7 +331,7 @@ impl ConfigHandler {
     }
 
     pub fn disable_unuse_mods(&self) -> Result<()> {
-        let mut file_names = self
+        let file_names = self
             .locked_config
             .mods
             .as_ref()
@@ -330,10 +343,12 @@ impl ConfigHandler {
         }) {
             let name = &entry?.file_name().to_str().unwrap().to_owned();
 
-            if !(file_names.is_some() && file_names.as_mut().unwrap().any(|x| x == name)) {
+            if !(file_names.is_some() && file_names.as_ref().unwrap().to_owned().any(|x| x == name))
+            {
                 let path = Path::new("mods").join(name);
                 let new_name = format!("{}.unuse", name);
                 let new_path = Path::new("mods").join(new_name);
+                println!("path:{:?}\nnew_path:{:?}", path, new_path);
                 fs::rename(path, new_path)?;
             }
         }
@@ -341,7 +356,7 @@ impl ConfigHandler {
     }
 
     pub fn enable_used_mods(&self) -> Result<()> {
-        let mut file_names = self
+        let file_names = self
             .locked_config
             .mods
             .as_ref()
@@ -359,8 +374,9 @@ impl ConfigHandler {
 
             if file_names.is_some()
                 && file_names
-                    .as_mut()
+                    .as_ref()
                     .unwrap()
+                    .to_owned()
                     .any(|x| &format!("{}.unuse", x) == name)
             {
                 let path = Path::new("mods").join(name);

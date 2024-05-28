@@ -104,6 +104,7 @@ pub fn update(config_only: bool) -> Result<()> {
 fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<InstallTask> {
     config
         .iter()
+        .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
         .map(|(_, v)| {
             let save_file = Path::new("mods").join(&v.file_name);
             InstallTask {
@@ -202,6 +203,14 @@ fn sync_or_update(sync: bool) -> Result<()> {
                         } else {
                             bar_share.set_message(format!("Mod {} updated", name));
                         }
+                    }
+
+                    if let Some(file_name) = conf.file_name {
+                        handle_share
+                            .write()
+                            .unwrap()
+                            .add_mod_local(&file_name)
+                            .unwrap();
                     }
                 }
             })
