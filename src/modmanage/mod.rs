@@ -243,6 +243,23 @@ fn sync_or_update(sync: bool) -> Result<()> {
 }
 
 pub fn clean() -> Result<()> {
+    let origin = ConfigHandler::read()?;
+    let mut handle = origin.clone();
+    if let Some(x) = origin.locked_config.mods.as_ref().map(|x| {
+        x.iter().filter(|(locked_mod_name, _)| {
+            let mods = handle.config.mods.as_ref();
+            !(mods.is_some()
+                && mods
+                    .map(|x| x.iter().any(|(name, _)| &name == locked_mod_name))
+                    .unwrap())
+        })
+    }) {
+        x.to_owned()
+            .for_each(|(name, _)| handle.locked_config.remove_mod(name).unwrap());
+    }
+    handle.enable_used_mods()?;
+    handle.disable_unuse_mods()?;
+    handle.write_locked_config()?;
     for entry in WalkDir::new("mods").into_iter().filter(|x| {
         x.as_ref()
             .unwrap()
@@ -254,5 +271,6 @@ pub fn clean() -> Result<()> {
         let file_path = entry?.path().to_owned();
         fs::remove_file(file_path)?;
     }
+    println!("mods cleaned");
     Ok(())
 }

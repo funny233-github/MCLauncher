@@ -333,11 +333,10 @@ impl ConfigHandler {
     }
 
     pub fn disable_unuse_mods(&self) -> Result<()> {
-        let file_names = self
-            .locked_config
-            .mods
-            .as_ref()
-            .map(|x| x.iter().map(|(_, x)| &x.file_name));
+        let file_names = self.config.mods.as_ref().map(|x| {
+            x.iter()
+                .map(|(name, _)| self.locked_config.mods.as_ref().map(|x| &x[name].file_name))
+        });
 
         for entry in WalkDir::new("mods").into_iter().filter(|x| {
             let name = x.as_ref().unwrap().file_name().to_str().unwrap();
@@ -345,7 +344,12 @@ impl ConfigHandler {
         }) {
             let name = &entry?.file_name().to_str().unwrap().to_owned();
 
-            if !(file_names.is_some() && file_names.as_ref().unwrap().to_owned().any(|x| x == name))
+            if !(file_names.is_some()
+                && file_names
+                    .as_ref()
+                    .unwrap()
+                    .to_owned()
+                    .any(|x| x.unwrap() == name))
             {
                 let path = Path::new("mods").join(name);
                 let new_name = format!("{}.unuse", name);
@@ -357,11 +361,10 @@ impl ConfigHandler {
     }
 
     pub fn enable_used_mods(&self) -> Result<()> {
-        let file_names = self
-            .locked_config
-            .mods
-            .as_ref()
-            .map(|x| x.iter().map(|(_, x)| &x.file_name));
+        let file_names = self.config.mods.as_ref().map(|x| {
+            x.iter()
+                .map(|(name, _)| self.locked_config.mods.as_ref().map(|x| &x[name].file_name))
+        });
 
         for entry in WalkDir::new("mods").into_iter().filter(|x| {
             x.as_ref()
@@ -378,7 +381,7 @@ impl ConfigHandler {
                     .as_ref()
                     .unwrap()
                     .to_owned()
-                    .any(|x| &format!("{}.unuse", x) == name)
+                    .any(|x| &format!("{}.unuse", x.unwrap()) == name)
             {
                 let path = Path::new("mods").join(name);
                 let mut new_name = name.clone();
