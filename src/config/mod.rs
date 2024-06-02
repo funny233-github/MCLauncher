@@ -6,6 +6,7 @@ use modrinth_api::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use uuid::Uuid;
 use walkdir::WalkDir;
@@ -91,6 +92,14 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
+    /// Add mod for config
+    /// # Examples
+    /// ```
+    /// use launcher::config::{RuntimeConfig, ModConfig};
+    /// let mut config = RuntimeConfig::default();
+    /// let mod_conf = ModConfig::from_local("file name");
+    /// config.add_mod("mod name", mod_conf);
+    /// ```
     pub fn add_mod(&mut self, name: &str, modconf: ModConfig) {
         if let Some(mods) = self.mods.as_mut() {
             mods.insert(name.to_owned(), modconf);
@@ -99,11 +108,26 @@ impl RuntimeConfig {
         }
     }
 
+    /// Add local mod for config
+    /// # Examples
+    /// ```
+    /// use launcher::config::RuntimeConfig;
+    /// let mut config = RuntimeConfig::default();
+    /// config.add_local_mod("file name");
+    /// ```
     pub fn add_local_mod(&mut self, file_name: &str) {
         let modconf = ModConfig::from_local(file_name);
         self.add_mod(file_name, modconf);
     }
 
+    /// Remove mod for config
+    /// # Examples
+    /// ```
+    /// use launcher::config::RuntimeConfig;
+    /// let mut config = RuntimeConfig::default();
+    /// config.add_local_mod("file name");
+    /// config.remove_mod("file name");
+    /// ```
     pub fn remove_mod(&mut self, name: &str) {
         if let Some(mods) = self.mods.as_mut() {
             mods.remove(name);
@@ -192,6 +216,14 @@ pub struct LockedConfig {
 }
 
 impl LockedConfig {
+    /// add mod for locked config
+    /// # Examples
+    /// ```
+    /// use launcher::config::{LockedConfig, LockedModConfig};
+    /// let mut config = LockedConfig::default();
+    /// let mod_conf = LockedModConfig::from_local("file name");
+    /// config.add_mod("mod name", mod_conf);
+    /// ```
     pub fn add_mod(&mut self, name: &str, modconf: LockedModConfig) {
         if let Some(mods) = self.mods.as_mut() {
             mods.insert(name.to_owned(), modconf);
@@ -200,6 +232,13 @@ impl LockedConfig {
         }
     }
 
+    /// add local mod for locked config
+    /// # Examples
+    /// ```
+    /// use launcher::config::LockedConfig;
+    /// let mut config = LockedConfig::default();
+    /// config.add_local_mod("file name");
+    /// ```
     pub fn add_local_mod(&mut self, name: &str) {
         let modconf = LockedModConfig {
             file_name: name.to_owned(),
@@ -210,6 +249,14 @@ impl LockedConfig {
         self.add_mod(name, modconf);
     }
 
+    /// remove mod for locked config
+    /// # Examples
+    /// ```
+    /// use launcher::config::LockedConfig;
+    /// let mut config = LockedConfig::default();
+    /// config.add_local_mod("file name");
+    /// config.remove_mod("file name");
+    /// ```
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         if let Some(mods) = self.mods.as_mut() {
             mods.remove(name);
@@ -221,13 +268,98 @@ impl LockedConfig {
     }
 }
 
+/// Mutable access count
+#[derive(Debug, Clone)]
+struct Mac<T> {
+    value: T,
+    has_mut_accessed: bool,
+}
+
+impl<T> Mac<T> {
+    #[inline]
+    pub fn new(value: T) -> Self {
+        Self {
+            value,
+            has_mut_accessed: false,
+        }
+    }
+
+    #[inline]
+    pub const fn get(&self) -> &T {
+        &self.value
+    }
+
+    #[inline]
+    pub fn get_mut(&mut self) -> &mut T {
+        self.has_mut_accessed = true;
+        &mut self.value
+    }
+
+    #[inline]
+    pub fn has_mut_accessed(&self) -> bool {
+        self.has_mut_accessed
+    }
+}
+
+impl<T> From<T> for Mac<T> {
+    #[inline]
+    fn from(value: T) -> Self {
+        Mac::new(value)
+    }
+}
+
+impl<T> Deref for Mac<T> {
+    type Target = T;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.get()
+    }
+}
+
+impl<T> DerefMut for Mac<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.get_mut()
+    }
+}
+
+/// # Writing with Mutable Access
+///
+/// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
+/// updated and written to the file upon `ConfigHandler`'s drop.
+/// In contrast, the `locked_config` field will not write.
 #[derive(Debug, Clone)]
 pub struct ConfigHandler {
-    pub config: RuntimeConfig,
-    pub locked_config: LockedConfig,
+    config: Mac<RuntimeConfig>,
+    locked_config: Mac<LockedConfig>,
 }
 
 impl ConfigHandler {
+    #[inline]
+    pub fn config(&self) -> &RuntimeConfig {
+        &self.config
+    }
+
+    #[inline]
+    pub fn config_mut(&mut self) -> &mut RuntimeConfig {
+        &mut self.config
+    }
+
+    #[inline]
+    pub fn locked_config(&self) -> &LockedConfig {
+        &self.locked_config
+    }
+
+    #[inline]
+    pub fn locked_config_mut(&mut self) -> &mut LockedConfig {
+        &mut self.locked_config
+    }
+    /// Read config.toml and config.lock
+    /// # Error
+    /// Error when config.toml not exist
+    /// Error When config.toml or config.lock context is invalid
+    /// # Note
+    /// When config.lock not exist, this function will create a default config.lock data
     pub fn read() -> Result<Self> {
         let config = fs::read_to_string("config.toml")?;
         let config: RuntimeConfig = toml::from_str(&config)?;
@@ -242,6 +374,7 @@ impl ConfigHandler {
                 }
             }
         }
+        let config = Mac::new(config);
 
         let locked_config = if fs::metadata("config.lock").is_ok() {
             let data = fs::read_to_string("config.lock")?;
@@ -249,28 +382,36 @@ impl ConfigHandler {
         } else {
             LockedConfig::default()
         };
+
+        let locked_config = Mac::new(locked_config);
         Ok(ConfigHandler {
             config,
             locked_config,
         })
     }
 
+    /// Write `config.toml` and `config.lock`
+    /// # Writing with Mutable Access
+    ///
+    /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
+    /// updated and written to the file upon write() is call.
+    /// In contrast, the `locked_config` field will not write.
     pub fn write(&self) -> Result<()> {
-        fs::write("config.toml", toml::to_string_pretty(&self.config)?)?;
-        fs::write("config.lock", toml::to_string_pretty(&self.locked_config)?)?;
+        if self.config.has_mut_accessed() {
+            fs::write("config.toml", toml::to_string_pretty(self.config.get())?)?;
+        }
+        if self.locked_config.has_mut_accessed() {
+            fs::write(
+                "config.lock",
+                toml::to_string_pretty(self.locked_config.get())?,
+            )?;
+        }
+        self.disable_unuse_mods()?;
+        self.enable_used_mods()?;
         Ok(())
     }
 
-    pub fn write_config(&self) -> Result<()> {
-        fs::write("config.toml", toml::to_string_pretty(&self.config)?)?;
-        Ok(())
-    }
-
-    pub fn write_locked_config(&self) -> Result<()> {
-        fs::write("config.lock", toml::to_string_pretty(&self.locked_config)?)?;
-        Ok(())
-    }
-
+    /// Add local mod
     /// # Error
     /// Error when file mods/name not found
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
@@ -278,43 +419,51 @@ impl ConfigHandler {
         let path = Path::new("mods").join(name);
         fs::metadata(path)?;
 
-        self.config.add_local_mod(name);
-        self.locked_config.add_local_mod(name);
+        self.config_mut().add_local_mod(name);
+        self.locked_config_mut().add_local_mod(name);
 
         Ok(())
     }
 
+    /// Add unlocal mod with block
+    /// # Error
+    /// Error when fetch mod fail
     pub fn add_mod_unlocal_blocking(&mut self, name: &str, version: &Option<String>) -> Result<()> {
         let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        self.config.add_mod(name, modconf);
+        self.config_mut().add_mod(name, modconf);
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config.add_mod(name, locked_modconf);
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
+    /// Add unlocal mod
+    /// # Error
+    /// Error when fetch mod fail
     pub async fn add_mod_unlocal(&mut self, name: &str, version: &Option<String>) -> Result<()> {
         let version = fetch_version(name, version, &self.config).await?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        self.config.add_mod(name, modconf);
+        self.config_mut().add_mod(name, modconf);
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config.add_mod(name, locked_modconf);
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
+    /// Add mod from Version data
     pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
         let modconf = ModConfig::from(version.clone());
-        self.config.add_mod(name, modconf);
+        self.config_mut().add_mod(name, modconf);
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config.add_mod(name, locked_modconf);
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
+    /// Remove mod for configs
     /// # Panic
     /// panic when can't found mod in config.lock
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
@@ -326,16 +475,21 @@ impl ConfigHandler {
             fs::remove_file(file_path)?;
         }
 
-        self.config.remove_mod(name);
-        self.locked_config.remove_mod(name)?;
+        self.config_mut().remove_mod(name);
+        self.locked_config_mut().remove_mod(name)?;
 
         Ok(())
     }
 
+    /// Rename file which not list in `config.toml` to `mod_filename.unuse`
     pub fn disable_unuse_mods(&self) -> Result<()> {
-        let file_names = self.config.mods.as_ref().map(|x| {
-            x.iter()
-                .map(|(name, _)| self.locked_config.mods.as_ref().map(|x| &x[name].file_name))
+        let file_names = self.config().mods.as_ref().map(|x| {
+            x.iter().map(|(name, _)| {
+                self.locked_config()
+                    .mods
+                    .as_ref()
+                    .map(|x| &x[name].file_name)
+            })
         });
 
         for entry in WalkDir::new("mods").into_iter().filter(|x| {
@@ -360,10 +514,15 @@ impl ConfigHandler {
         Ok(())
     }
 
+    /// Rename file which list in `config.toml` from `mod_filename.unuse` to `mod_filename`
     pub fn enable_used_mods(&self) -> Result<()> {
-        let file_names = self.config.mods.as_ref().map(|x| {
-            x.iter()
-                .map(|(name, _)| self.locked_config.mods.as_ref().map(|x| &x[name].file_name))
+        let file_names = self.config().mods.as_ref().map(|x| {
+            x.iter().map(|(name, _)| {
+                self.locked_config()
+                    .mods
+                    .as_ref()
+                    .map(|x| &x[name].file_name)
+            })
         });
 
         for entry in WalkDir::new("mods").into_iter().filter(|x| {
@@ -391,5 +550,12 @@ impl ConfigHandler {
             }
         }
         Ok(())
+    }
+}
+
+impl Drop for ConfigHandler {
+    #[inline]
+    fn drop(&mut self) {
+        self.write().unwrap();
     }
 }

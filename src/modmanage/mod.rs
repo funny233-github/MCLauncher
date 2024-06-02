@@ -71,15 +71,12 @@ pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) 
         config_handler.add_mod_unlocal_blocking(name, &version)?;
         format!("Add mod {} surcessful", name)
     };
+    drop(config_handler);
 
-    config_handler.write()?;
     if !config_only {
         install()?;
     }
 
-    let handle = ConfigHandler::read()?;
-    handle.disable_unuse_mods()?;
-    handle.enable_used_mods()?;
     println!("{}", message);
     Ok(())
 }
@@ -87,7 +84,6 @@ pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) 
 pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
-    config_handler.write()?;
 
     println!("mod {} removed", &name);
     Ok(())
@@ -98,9 +94,6 @@ pub fn update(config_only: bool) -> Result<()> {
     if !config_only {
         install()?;
     }
-    let handle = ConfigHandler::read()?;
-    handle.disable_unuse_mods()?;
-    handle.enable_used_mods()?;
     Ok(())
 }
 
@@ -123,18 +116,19 @@ fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<Insta
 pub fn install() -> Result<()> {
     // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
-    if config_handler.locked_config.mods.is_none() {
+    if config_handler.locked_config().mods.is_none() {
         return Ok(());
     }
-    config_handler.locked_config.mods = Some(
+    config_handler.locked_config_mut().mods = Some(
         config_handler
-            .locked_config
+            .locked_config()
             .mods
+            .to_owned()
             .unwrap()
             .into_iter()
             .filter(|(name, _)| {
                 config_handler
-                    .config
+                    .config()
                     .mods
                     .as_ref()
                     .unwrap()
@@ -143,7 +137,7 @@ pub fn install() -> Result<()> {
             })
             .collect(),
     );
-    let tasks = mod_installtasks(&config_handler.locked_config.mods.unwrap());
+    let tasks = mod_installtasks(config_handler.locked_config().mods.as_ref().unwrap());
     TaskPool::from(tasks).install()?;
     Ok(())
 }
@@ -153,9 +147,6 @@ pub fn sync(config_only: bool) -> Result<()> {
     if !config_only {
         install()?;
     }
-    let handle = ConfigHandler::read()?;
-    handle.disable_unuse_mods()?;
-    handle.enable_used_mods()?;
     Ok(())
 }
 
@@ -172,8 +163,8 @@ fn progress_bar(len: usize) -> ProgressBar {
 }
 
 fn sync_or_update(sync: bool) -> Result<()> {
-    let mut config_handler = ConfigHandler::read()?;
-    if let Some(mods) = config_handler.config.mods.clone() {
+    let config_handler = ConfigHandler::read()?;
+    if let Some(mods) = config_handler.config().mods.to_owned() {
         let origin_config = Arc::new(ConfigHandler::read()?);
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len());
@@ -184,7 +175,7 @@ fn sync_or_update(sync: bool) -> Result<()> {
                 let bar_share = bar.clone();
                 async move {
                     let (name, conf) = x;
-                    if let Some(mods) = &origin_config_share.locked_config.mods.as_ref() {
+                    if let Some(mods) = &origin_config_share.locked_config().mods.as_ref() {
                         if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
                             return;
                         }
@@ -192,7 +183,7 @@ fn sync_or_update(sync: bool) -> Result<()> {
 
                     if let Some(ver) = conf.version {
                         let version = {
-                            let config = &origin_config_share.config;
+                            let config = &origin_config_share.config();
                             let ver = if sync { Some(ver) } else { None };
                             fetch_version(&name, &ver, config).await.unwrap().remove(0)
                         };
@@ -219,19 +210,6 @@ fn sync_or_update(sync: bool) -> Result<()> {
                 }
             })
             .async_execute(10);
-
-        if sync {
-            config_handler.write().unwrap().write_locked_config()?;
-        } else {
-            config_handler.write().unwrap().write()?;
-        }
-    } else {
-        config_handler.locked_config.mods = None;
-        if sync {
-            config_handler.write_locked_config()?;
-        } else {
-            config_handler.write()?;
-        }
     }
 
     if sync {
@@ -245,9 +223,9 @@ fn sync_or_update(sync: bool) -> Result<()> {
 pub fn clean() -> Result<()> {
     let origin = ConfigHandler::read()?;
     let mut handle = origin.clone();
-    if let Some(x) = origin.locked_config.mods.as_ref().map(|x| {
+    if let Some(x) = origin.locked_config().mods.as_ref().map(|x| {
         x.iter().filter(|(locked_mod_name, _)| {
-            let mods = handle.config.mods.as_ref();
+            let mods = origin.config().mods.as_ref();
             !(mods.is_some()
                 && mods
                     .map(|x| x.iter().any(|(name, _)| &name == locked_mod_name))
@@ -255,11 +233,9 @@ pub fn clean() -> Result<()> {
         })
     }) {
         x.to_owned()
-            .for_each(|(name, _)| handle.locked_config.remove_mod(name).unwrap());
+            .for_each(|(name, _)| handle.locked_config_mut().remove_mod(name).unwrap());
     }
-    handle.enable_used_mods()?;
-    handle.disable_unuse_mods()?;
-    handle.write_locked_config()?;
+    drop(handle);
     for entry in WalkDir::new("mods").into_iter().filter(|x| {
         x.as_ref()
             .unwrap()
