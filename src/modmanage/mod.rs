@@ -209,7 +209,7 @@ fn sync_or_update(sync: bool) -> Result<()> {
                     }
                 }
             })
-            .async_execute(10);
+            .async_execute(5);
     }
 
     if sync {

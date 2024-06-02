@@ -9,6 +9,7 @@ use mc_api::{
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
+use std::time::Duration;
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -103,6 +104,7 @@ async fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<byte
         let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
+            .timeout(Duration::from_secs(10))
             .send()
             .await;
         let data = match send {

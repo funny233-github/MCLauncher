@@ -1,6 +1,7 @@
 use reqwest::blocking::Client;
 use reqwest::Result;
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Hashes {
@@ -43,6 +44,11 @@ impl Versions {
                 "https://api.modrinth.com/v2/project/{}/version",
                 slug
             ))
+            .header(
+                reqwest::header::USER_AGENT,
+                "github.com/funny233-github/MCLauncher",
+            )
+            .timeout(Duration::from_secs(10))
             .send()?
             .json()
     }
@@ -53,6 +59,11 @@ impl Versions {
                 "https://api.modrinth.com/v2/project/{}/version",
                 slug
             ))
+            .header(
+                reqwest::header::USER_AGENT,
+                "github.com/funny233-github/MCLauncher",
+            )
+            .timeout(Duration::from_secs(10))
             .send()
             .await?
             .json()
