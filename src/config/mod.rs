@@ -80,9 +80,6 @@ pub struct RuntimeConfig {
     pub max_memory_size: u32,
     pub window_weight: u32,
     pub window_height: u32,
-    pub user_name: String,
-    pub user_type: String,
-    pub user_uuid: String,
     pub game_dir: String,
     pub game_version: String,
     pub java_path: String,
@@ -144,9 +141,6 @@ impl Default for RuntimeConfig {
             max_memory_size: 5000,
             window_weight: 854,
             window_height: 480,
-            user_name: "no_name".into(),
-            user_type: "offline".into(),
-            user_uuid: Uuid::new_v4().into(),
             game_dir: std::env::current_dir()
                 .unwrap()
                 .to_str()
@@ -268,6 +262,33 @@ impl LockedConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UserAccount {
+    pub user_name: String,
+    pub user_type: String,
+    pub user_uuid: String,
+}
+
+impl Default for UserAccount {
+    fn default() -> Self {
+        Self {
+            user_name: "noname".to_owned(),
+            user_type: "offline".to_owned(),
+            user_uuid: Uuid::new_v4().to_string(),
+        }
+    }
+}
+
+impl UserAccount {
+    pub fn new_offline(name: &str) -> Self {
+        Self {
+            user_name: name.to_owned(),
+            user_type: "offline".to_owned(),
+            user_uuid: Uuid::new_v4().to_string(),
+        }
+    }
+}
+
 /// Mutable access count
 #[derive(Debug, Clone)]
 struct Mac<T> {
@@ -332,6 +353,7 @@ impl<T> DerefMut for Mac<T> {
 pub struct ConfigHandler {
     config: Mac<RuntimeConfig>,
     locked_config: Mac<LockedConfig>,
+    user_account: Mac<UserAccount>,
 }
 
 impl ConfigHandler {
@@ -354,6 +376,26 @@ impl ConfigHandler {
     pub fn locked_config_mut(&mut self) -> &mut LockedConfig {
         &mut self.locked_config
     }
+
+    #[inline]
+    pub fn user_account(&self) -> &UserAccount {
+        &self.user_account
+    }
+
+    #[inline]
+    pub fn user_account_mut(&mut self) -> &mut UserAccount {
+        &mut self.user_account
+    }
+    pub fn init() -> Result<()> {
+        let handle = Self {
+            config: Mac::new(RuntimeConfig::default()),
+            locked_config: Mac::new(LockedConfig::default()),
+            user_account: Mac::new(UserAccount::default()),
+        };
+        handle.write_all()?;
+        Ok(())
+    }
+
     /// Read config.toml and config.lock
     /// # Error
     /// Error when config.toml not exist
@@ -383,11 +425,33 @@ impl ConfigHandler {
             LockedConfig::default()
         };
 
+        let user_account = Mac::new(toml::from_str(&fs::read_to_string("account.toml")?)?);
+
         let locked_config = Mac::new(locked_config);
         Ok(ConfigHandler {
             config,
             locked_config,
+            user_account,
         })
+    }
+
+    /// Add offline account which contain name
+    pub fn add_offline_account(&mut self, name: &str) {
+        *self.user_account_mut() = UserAccount::new_offline(name);
+    }
+
+    pub fn write_all(&self) -> Result<()> {
+        fs::write("config.toml", toml::to_string_pretty(self.config.get())?)?;
+        fs::write(
+            "config.lock",
+            toml::to_string_pretty(self.locked_config.get())?,
+        )?;
+        fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
+        if fs::metadata("mods").is_ok() {
+            self.disable_unuse_mods()?;
+            self.enable_used_mods()?;
+        }
+        Ok(())
     }
 
     /// Write `config.toml` and `config.lock`
@@ -396,7 +460,7 @@ impl ConfigHandler {
     /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
     /// updated and written to the file upon write() is call.
     /// In contrast, the `locked_config` field will not write.
-    pub fn write(&self) -> Result<()> {
+    pub fn write_with_mut(&self) -> Result<()> {
         if self.config.has_mut_accessed() {
             fs::write("config.toml", toml::to_string_pretty(self.config.get())?)?;
         }
@@ -406,8 +470,13 @@ impl ConfigHandler {
                 toml::to_string_pretty(self.locked_config.get())?,
             )?;
         }
-        self.disable_unuse_mods()?;
-        self.enable_used_mods()?;
+        if self.user_account.has_mut_accessed() {
+            fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
+        }
+        if fs::metadata("mods").is_ok() {
+            self.disable_unuse_mods()?;
+            self.enable_used_mods()?;
+        }
         Ok(())
     }
 
@@ -483,6 +552,9 @@ impl ConfigHandler {
 
     /// Rename file which not list in `config.toml` to `mod_filename.unuse`
     pub fn disable_unuse_mods(&self) -> Result<()> {
+        if fs::metadata("mods").is_err() {
+            return Ok(());
+        }
         let file_names = self.config().mods.as_ref().map(|x| {
             x.iter().map(|(name, _)| {
                 self.locked_config()
@@ -516,6 +588,9 @@ impl ConfigHandler {
 
     /// Rename file which list in `config.toml` from `mod_filename.unuse` to `mod_filename`
     pub fn enable_used_mods(&self) -> Result<()> {
+        if fs::metadata("mods").is_err() {
+            return Ok(());
+        }
         let file_names = self.config().mods.as_ref().map(|x| {
             x.iter().map(|(name, _)| {
                 self.locked_config()
@@ -556,6 +631,6 @@ impl ConfigHandler {
 impl Drop for ConfigHandler {
     #[inline]
     fn drop(&mut self) {
-        self.write().unwrap();
+        self.write_with_mut().unwrap();
     }
 }

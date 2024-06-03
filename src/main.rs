@@ -1,12 +1,10 @@
 use clap::{Parser, Subcommand};
-use launcher::config::{MCLoader, MCMirror, RuntimeConfig, VersionType};
+use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
 use launcher::install::install_mc;
 use launcher::modmanage;
 use launcher::runtime::gameruntime;
 use log::error;
 use mc_api::{fabric::Loader, official::VersionManifest};
-use std::fs;
-use uuid::Uuid;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -97,70 +95,59 @@ enum ModManage {
 
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
-    let normal_config = RuntimeConfig::default();
     match args.command {
         Command::Init => {
-            fs::write("config.toml", toml::to_string_pretty(&normal_config)?)?;
+            ConfigHandler::init()?;
             println!("Initialized empty game direction");
         }
         Command::List(sub) => {
-            let config = fs::read_to_string("config.toml")?;
-            let config: RuntimeConfig = toml::from_str(&config)?;
+            let handle = ConfigHandler::read()?;
             match sub {
                 ListSub::MC(_type) => {
-                    let list =
-                        VersionManifest::fetch(&config.mirror.version_manifest)?.list(_type.into());
+                    let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
+                        .list(_type.into());
                     println!("{:?}", list);
                 }
                 ListSub::Loader { loader: _loader } => {
-                    let l = Loader::fetch(&config.mirror.fabric_meta)?;
+                    let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
                     let list: Vec<&str> = l.iter().map(|x| x.version.as_ref()).collect();
                     println!("{:?}", list);
                 }
             }
         }
         Command::Account { name: _name } => {
-            let config = fs::read_to_string("config.toml")?;
-            let mut config: RuntimeConfig = toml::from_str(&config)?;
-            config.user_name = _name;
-            config.user_uuid = Uuid::new_v4().into();
-            config.user_type = "offline".into();
-            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
+            let mut handle = ConfigHandler::read()?;
+            handle.add_offline_account(&_name);
         }
         Command::Install { version, fabric } => {
-            let config = fs::read_to_string("config.toml")?;
-            let mut config: RuntimeConfig = toml::from_str(&config)?;
+            let mut handle = ConfigHandler::read()?;
             if version.is_none() && fabric.is_none() {
-                install_mc(&config)?;
+                install_mc(&handle.config())?;
                 return Ok(());
             }
 
             if let Some(_version) = version {
                 println!("Set version to {}", &_version);
-                config.game_version = _version;
+                handle.config_mut().game_version = _version;
             }
             if let Some(_fabric) = fabric {
                 println!("Set loader to {}", &_fabric);
-                config.loader = MCLoader::Fabric(_fabric);
+                handle.config_mut().loader = MCLoader::Fabric(_fabric);
             } else {
-                config.loader = MCLoader::None;
+                handle.config_mut().loader = MCLoader::None;
             }
-            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
-            install_mc(&config)?;
+            install_mc(&handle.config())?;
         }
         Command::Run => {
-            let config = fs::read_to_string("config.toml")?;
-            let config: RuntimeConfig = toml::from_str(&config)?;
+            let config = ConfigHandler::read()?;
             gameruntime(config)?;
         }
         Command::Mirror(mirror) => {
-            let config = fs::read_to_string("config.toml")?;
-            let mut config: RuntimeConfig = toml::from_str(&config)?;
+            let mut handle = ConfigHandler::read()?;
             match mirror {
-                Mirrors::Official => config.mirror = MCMirror::official_mirror(),
-                Mirrors::Bmclapi => config.mirror = MCMirror::bmcl_mirror(),
+                Mirrors::Official => handle.config_mut().mirror = MCMirror::official_mirror(),
+                Mirrors::Bmclapi => handle.config_mut().mirror = MCMirror::bmcl_mirror(),
             }
-            fs::write("config.toml", toml::to_string_pretty(&config)?)?;
             println!("Set official mirror");
         }
         Command::Mod(option) => match option {

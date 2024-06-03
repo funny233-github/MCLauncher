@@ -1,10 +1,10 @@
-use crate::config::RuntimeConfig;
+use crate::config::ConfigHandler;
 use std::io;
 use std::process::{Command, Stdio};
 
-pub fn gameruntime(config: RuntimeConfig) -> anyhow::Result<()> {
-    let args = config.args_provider()?;
-    let path = config.java_path;
+pub fn gameruntime(handle: ConfigHandler) -> anyhow::Result<()> {
+    let args = handle.args_provider()?;
+    let path = &handle.config().java_path;
     let mut child = Command::new(path)
         .args(args)
         .stdout(Stdio::piped())
