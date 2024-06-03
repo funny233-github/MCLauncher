@@ -1,11 +1,11 @@
 use crate::asyncuntil::AsyncIterator;
-use crate::config::{ConfigHandler, LockedModConfig, MCLoader, RuntimeConfig};
+use crate::config::{ConfigHandler, MCLoader, RuntimeConfig};
 use crate::install::{InstallTask, InstallType, TaskPool};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
 use modrinth_api::{Version, Versions};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::VecDeque,
     fs,
     path::Path,
     sync::{Arc, RwLock},
@@ -97,12 +97,18 @@ pub fn update(config_only: bool) -> Result<()> {
     Ok(())
 }
 
-fn mod_installtasks(config: &HashMap<String, LockedModConfig>) -> VecDeque<InstallTask> {
-    config
+fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
+    handle
+        .locked_config()
+        .mods
+        .as_ref()
+        .unwrap()
         .iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
         .map(|(_, v)| {
-            let save_file = Path::new("mods").join(&v.file_name);
+            let save_file = Path::new(&handle.config().game_dir)
+                .join("mods")
+                .join(&v.file_name);
             InstallTask {
                 url: v.url.to_owned().unwrap(),
                 sha1: Some(v.sha1.to_owned().unwrap()),
@@ -137,7 +143,7 @@ pub fn install() -> Result<()> {
             })
             .collect(),
     );
-    let tasks = mod_installtasks(config_handler.locked_config().mods.as_ref().unwrap());
+    let tasks = mod_installtasks(&config_handler);
     TaskPool::from(tasks).install()?;
     Ok(())
 }
@@ -235,8 +241,8 @@ pub fn clean() -> Result<()> {
         x.to_owned()
             .for_each(|(name, _)| handle.locked_config_mut().remove_mod(name).unwrap());
     }
-    drop(handle);
-    for entry in WalkDir::new("mods").into_iter().filter(|x| {
+    let mods_dir = Path::new(&handle.config().game_dir).join("mods");
+    for entry in WalkDir::new(mods_dir).into_iter().filter(|x| {
         x.as_ref()
             .unwrap()
             .file_name()

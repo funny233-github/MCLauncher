@@ -447,7 +447,9 @@ impl ConfigHandler {
             toml::to_string_pretty(self.locked_config.get())?,
         )?;
         fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
-        if fs::metadata("mods").is_ok() {
+
+        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        if fs::metadata(mod_dir).is_ok() {
             self.disable_unuse_mods()?;
             self.enable_used_mods()?;
         }
@@ -473,7 +475,9 @@ impl ConfigHandler {
         if self.user_account.has_mut_accessed() {
             fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
         }
-        if fs::metadata("mods").is_ok() {
+
+        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        if fs::metadata(mod_dir).is_ok() {
             self.disable_unuse_mods()?;
             self.enable_used_mods()?;
         }
@@ -485,7 +489,7 @@ impl ConfigHandler {
     /// Error when file mods/name not found
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
         // Error when file not found
-        let path = Path::new("mods").join(name);
+        let path = Path::new(&self.config().game_dir).join("mods").join(name);
         fs::metadata(path)?;
 
         self.config_mut().add_local_mod(name);
@@ -552,7 +556,8 @@ impl ConfigHandler {
 
     /// Rename file which not list in `config.toml` to `mod_filename.unuse`
     pub fn disable_unuse_mods(&self) -> Result<()> {
-        if fs::metadata("mods").is_err() {
+        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
         let file_names = self.config().mods.as_ref().map(|x| {
@@ -564,7 +569,7 @@ impl ConfigHandler {
             })
         });
 
-        for entry in WalkDir::new("mods").into_iter().filter(|x| {
+        for entry in WalkDir::new(&mod_dir).into_iter().filter(|x| {
             let name = x.as_ref().unwrap().file_name().to_str().unwrap();
             name != "mods" && (!name.ends_with(".unuse"))
         }) {
@@ -588,7 +593,8 @@ impl ConfigHandler {
 
     /// Rename file which list in `config.toml` from `mod_filename.unuse` to `mod_filename`
     pub fn enable_used_mods(&self) -> Result<()> {
-        if fs::metadata("mods").is_err() {
+        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
         let file_names = self.config().mods.as_ref().map(|x| {
@@ -600,7 +606,7 @@ impl ConfigHandler {
             })
         });
 
-        for entry in WalkDir::new("mods").into_iter().filter(|x| {
+        for entry in WalkDir::new(&mod_dir).into_iter().filter(|x| {
             x.as_ref()
                 .unwrap()
                 .file_name()
