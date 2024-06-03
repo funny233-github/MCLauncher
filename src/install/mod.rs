@@ -1,20 +1,21 @@
+use crate::asyncuntil::AsyncIterator;
 use crate::config::{MCLoader, RuntimeConfig};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
 use mc_api::{
-    fabric::{Profile,Loader},
+    fabric::{Loader, Profile},
     official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
 use reqwest::header;
 use sha1::{Digest, Sha1};
+use std::time::Duration;
 use std::{
     borrow::Cow,
     cmp::Ordering,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
 };
 use zip::ZipArchive;
 
@@ -29,7 +30,7 @@ const OS: &str = "linux";
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
-trait Sha1Compare {
+trait ShaCompare {
     fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
     where
         C: AsRef<str> + Into<String>;
@@ -56,7 +57,7 @@ impl DomainReplacer<String> for String {
     }
 }
 
-impl<T> Sha1Compare for T
+impl<T> ShaCompare for T
 where
     T: AsRef<[u8]>,
 {
@@ -86,6 +87,7 @@ pub enum InstallType {
     Asset,
     Library,
     Client,
+    Mods,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -102,6 +104,7 @@ async fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<byte
         let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
+            .timeout(Duration::from_secs(10))
             .send()
             .await;
         let data = match send {
@@ -148,6 +151,10 @@ impl FileInstall for InstallTask {
                 self.save_file.file_name().unwrap()
             )),
             InstallType::Client => bar.set_message("client installed"),
+            InstallType::Mods => bar.set_message(format!(
+                "mod {:?} installed",
+                self.save_file.file_name().unwrap()
+            )),
         }
     }
 }
@@ -157,7 +164,7 @@ pub struct TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone + 'static,
 {
-    pub pool: Arc<Mutex<VecDeque<T>>>,
+    pub pool: VecDeque<T>,
     bar: ProgressBar,
 }
 
@@ -174,10 +181,7 @@ where
             .unwrap()
             .progress_chars("##-"),
         );
-        Self {
-            pool: Arc::from(Mutex::from(tasks)),
-            bar,
-        }
+        Self { pool: tasks, bar }
     }
 }
 
@@ -185,63 +189,53 @@ impl<T> TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
-    ///Removes the last task from the Pool and returns it, or `None` if
-    ///it is empty
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    fn pop_back(&self) -> Option<T> {
-        self.pool.lock().unwrap().pop_back()
-    }
-
     //Execute all install task.
     //# Error
     //Return Error when install fail 5 times
-    #[tokio::main]
-    pub async fn install(self) -> anyhow::Result<()> {
-        let mut handles = Vec::with_capacity(MAX_THREAD);
-        for _ in 0..MAX_THREAD {
-            let share = self.clone();
-            handles.push(tokio::spawn(async move {
-                loop {
-                    let task = share.pop_back();
-                    if let Some(_task) = task {
-                        _task.install().await.unwrap();
-                        _task.bar_update(&share.bar);
-                    } else {
-                        return;
-                    }
+    pub fn install(self) -> anyhow::Result<()> {
+        self.pool
+            .into_iter()
+            .map(|x| {
+                let share = self.bar.clone();
+                async move {
+                    x.install().await.unwrap();
+                    x.bar_update(&share);
                 }
-            }))
-        }
-        for handle in handles {
-            handle.await.unwrap();
-        }
+            })
+            .async_execute(MAX_THREAD);
         Ok(())
     }
 }
 
-#[cfg(test)]
-mod task_pool {
-    use super::{InstallTask, TaskPool};
-    use std::collections::VecDeque;
+pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
+    let version = fetch_version(config)?;
 
-    #[test]
-    fn test_pop_back() {
-        let task = InstallTask::default();
-        let tasks = VecDeque::from([task.clone()]);
-        let pool = TaskPool::from(tasks);
-        assert_eq!(pool.pop_back(), Some(task));
-        assert_eq!(pool.pop_back(), None);
-    }
+    let version_json_file = Path::new(&config.game_dir)
+        .join("versions")
+        .join(&config.game_version)
+        .join(config.game_version.clone() + ".json");
+    version.install(&version_json_file);
+
+    let native_dir = Path::new(&config.game_dir).join("natives");
+    fs::create_dir_all(native_dir).unwrap_or(());
+
+    install_dependencies(config, &version)?;
+    Ok(())
 }
 
-pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
+fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
 
-    if !manifest.versions.iter().any(|x|x.id == config.game_version) {
-        return Err(anyhow::anyhow!("Cant' find the minecraft version {}", &config.game_version));
+    if !manifest
+        .versions
+        .iter()
+        .any(|x| x.id == config.game_version)
+    {
+        return Err(anyhow::anyhow!(
+            "Cant' find the minecraft version {}",
+            &config.game_version
+        ));
     }
 
     println!("fetching version...");
@@ -253,7 +247,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     if let MCLoader::Fabric(v) = &config.loader {
         println!("fetching fabric loaders version...");
         let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
-        if !loaders.iter().any(|x|&x.version == v) {
+        if !loaders.iter().any(|x| &x.version == v) {
             return Err(anyhow::anyhow!("Cant' find the loader version {}", v));
         }
         println!("fetching fabric profile...");
@@ -262,47 +256,38 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
         let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
         version.merge(profile)
     }
+    Ok(version)
+}
 
-    let version_json_file = Path::new(&config.game_dir)
-        .join("versions")
-        .join(&config.game_version)
-        .join(config.game_version.clone() + ".json");
-    version.install(&version_json_file);
-    let native_dir = Path::new(&config.game_dir).join("natives");
-    fs::create_dir_all(native_dir).unwrap_or(());
-
-    let game_dir = &config.game_dir;
-    let game_version = &config.game_version;
-    let asset_index_file = Path::new(game_dir)
+fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Result<()> {
+    let asset_index_file = Path::new(&config.game_dir)
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
     println!("fetching assets/libraries/natives...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
-
-    let mut tasks = assets_installtask(game_dir, &config.mirror.assets, &assets);
+    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets);
     tasks.append(&mut libraries_installtask(
-        game_dir,
+        &config.game_dir,
         &config.mirror.libraries,
         &config.mirror.fabric_maven,
-        &version,
+        version,
     )?);
     tasks.push_back(client_installtask(
-        game_dir,
-        game_version,
+        &config.game_dir,
+        &config.game_version,
         &config.mirror.client,
-        &version,
+        version,
     )?);
     tasks.append(&mut native_installtask(
-        game_dir,
+        &config.game_dir,
         &config.mirror.libraries,
-        &version,
+        version,
     )?);
     TaskPool::from(tasks).install()?;
     println!("extracting natives ...");
-    native_extract(game_dir, &version);
-
+    native_extract(&config.game_dir, version);
     Ok(())
 }
 
