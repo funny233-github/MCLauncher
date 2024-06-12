@@ -1,5 +1,5 @@
 use crate::asyncuntil::AsyncIterator;
-use crate::config::{ConfigHandler, MCLoader, RuntimeConfig};
+use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
 use crate::install::{InstallTask, InstallType, TaskPool};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -168,52 +168,65 @@ fn progress_bar(len: usize) -> ProgressBar {
     bar
 }
 
+async fn sync_or_update_handle(
+    (name, conf, sync): (String, ModConfig, bool),
+    origin_config_share: Arc<RuntimeConfig>,
+    handle_share: Arc<RwLock<ConfigHandler>>,
+    bar_share: ProgressBar,
+) {
+    if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
+        if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
+            bar_share.inc(1);
+            bar_share.set_message(format!("Mod {} synced", name));
+            return;
+        }
+    }
+
+    if let Some(ver) = conf.version {
+        let version = {
+            let ver = if sync { Some(ver) } else { None };
+            fetch_version(&name, &ver, &origin_config_share).await.unwrap().remove(0)
+        };
+        handle_share
+            .write()
+            .unwrap()
+            .add_mod_from(&name, version)
+            .unwrap();
+
+        bar_share.inc(1);
+        if sync {
+            bar_share.set_message(format!("Mod {} synced", name));
+        } else {
+            bar_share.set_message(format!("Mod {} updated", name));
+        }
+    }
+
+    if let Some(file_name) = conf.file_name {
+        handle_share
+            .write()
+            .unwrap()
+            .add_mod_local(&file_name)
+            .unwrap();
+    }
+}
+
 fn sync_or_update(sync: bool) -> Result<()> {
     let config_handler = ConfigHandler::read()?;
     if let Some(mods) = config_handler.config().mods.to_owned() {
-        let origin_config = Arc::new(ConfigHandler::read()?);
+        let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len());
         mods.into_iter()
-            .map(|x| {
+            .map(|(name, conf)| {
                 let origin_config_share = origin_config.clone();
                 let handle_share = config_handler.clone();
                 let bar_share = bar.clone();
-                async move {
-                    let (name, conf) = x;
-                    if let Some(mods) = &origin_config_share.locked_config().mods.as_ref() {
-                        if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
-                            return;
-                        }
-                    }
-
-                    if let Some(ver) = conf.version {
-                        let version = {
-                            let config = &origin_config_share.config();
-                            let ver = if sync { Some(ver) } else { None };
-                            fetch_version(&name, &ver, config).await.unwrap().remove(0)
-                        };
-                        handle_share
-                            .write()
-                            .unwrap()
-                            .add_mod_from(&name, version)
-                            .unwrap();
-                        bar_share.inc(1);
-                        if sync {
-                            bar_share.set_message(format!("Mod {} synced", name));
-                        } else {
-                            bar_share.set_message(format!("Mod {} updated", name));
-                        }
-                    }
-
-                    if let Some(file_name) = conf.file_name {
-                        handle_share
-                            .write()
-                            .unwrap()
-                            .add_mod_local(&file_name)
-                            .unwrap();
-                    }
-                }
+                sync_or_update_handle(
+                    (name, conf, sync),
+                    origin_config_share,
+                    handle_share,
+                    bar_share,
+                )
             })
             .async_execute(5);
     }

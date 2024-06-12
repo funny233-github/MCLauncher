@@ -1,5 +1,5 @@
+use anyhow::Result;
 use reqwest::blocking::Client;
-use reqwest::Result;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -39,34 +39,59 @@ impl Versions {
     /// ```
     pub fn fetch_blocking(slug: &str) -> Result<Vec<Version>> {
         let client = Client::new();
-        client
-            .get(format!(
-                "https://api.modrinth.com/v2/project/{}/version",
-                slug
-            ))
-            .header(
-                reqwest::header::USER_AGENT,
-                "github.com/funny233-github/MCLauncher",
-            )
-            .timeout(Duration::from_secs(10))
-            .send()?
-            .json()
+        for _ in 0..5 {
+            let init = client
+                .get(format!(
+                    "https://api.modrinth.com/v2/project/{}/version",
+                    slug
+                ))
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "github.com/funny233-github/MCLauncher",
+                )
+                .timeout(Duration::from_secs(10));
+            let send = if let Ok(_send) = init.send() {
+                _send
+            } else {
+                std::thread::sleep(Duration::from_secs(3));
+                continue;
+            };
+            if let Ok(_json) = send.json() {
+                return Ok(_json);
+            } else {
+                continue;
+            }
+        }
+
+        Err(anyhow::anyhow!("modrinth Versions fetch timeout!"))
     }
+
     pub async fn fetch(slug: &str) -> Result<Vec<Version>> {
         let client = reqwest::Client::new();
-        client
-            .get(format!(
-                "https://api.modrinth.com/v2/project/{}/version",
-                slug
-            ))
-            .header(
-                reqwest::header::USER_AGENT,
-                "github.com/funny233-github/MCLauncher",
-            )
-            .timeout(Duration::from_secs(10))
-            .send()
-            .await?
-            .json()
-            .await
+        for _ in 0..5 {
+            let init = client
+                .get(format!(
+                    "https://api.modrinth.com/v2/project/{}/version",
+                    slug
+                ))
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "github.com/funny233-github/MCLauncher",
+                )
+                .timeout(Duration::from_secs(10));
+            let send = if let Ok(_send) = init.send().await {
+                _send
+            } else {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                continue;
+            };
+            if let Ok(_json) = send.json().await {
+                return Ok(_json);
+            } else {
+                continue;
+            }
+        }
+
+        Err(anyhow::anyhow!("modrinth Versions fetch timeout!"))
     }
 }
