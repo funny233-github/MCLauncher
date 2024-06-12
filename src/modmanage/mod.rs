@@ -18,7 +18,7 @@ pub async fn fetch_version(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch(name).await?;
-    Ok(versions
+    let res: Vec<Version> = versions
         .into_iter()
         .filter(|x| {
             x.game_versions.iter().any(|x| x == &config.game_version)
@@ -34,7 +34,11 @@ pub async fn fetch_version(
                 true
             }
         })
-        .collect())
+        .collect();
+    if res.is_empty() {
+        return Err(anyhow::anyhow!("Can't fetch {}", name));
+    };
+    Ok(res)
 }
 
 pub fn fetch_version_blocking(
@@ -43,7 +47,7 @@ pub fn fetch_version_blocking(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch_blocking(name)?;
-    Ok(versions
+    let res: Vec<Version> = versions
         .into_iter()
         .filter(|x| {
             x.game_versions.iter().any(|x| x == &config.game_version)
@@ -59,7 +63,11 @@ pub fn fetch_version_blocking(
                 true
             }
         })
-        .collect())
+        .collect();
+    if res.is_empty() {
+        return Err(anyhow::anyhow!("Can't fetch {}", name));
+    }
+    Ok(res)
 }
 
 pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
@@ -185,7 +193,10 @@ async fn sync_or_update_handle(
     if let Some(ver) = conf.version {
         let version = {
             let ver = if sync { Some(ver) } else { None };
-            fetch_version(&name, &ver, &origin_config_share).await.unwrap().remove(0)
+            fetch_version(&name, &ver, &origin_config_share)
+                .await
+                .unwrap()
+                .remove(0)
         };
         handle_share
             .write()
