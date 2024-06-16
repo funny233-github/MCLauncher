@@ -4,7 +4,7 @@ use clap::Subcommand;
 use mc_api::official;
 use modrinth_api::Version;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
@@ -85,7 +85,7 @@ pub struct RuntimeConfig {
     pub java_path: String,
     pub loader: MCLoader,
     pub mirror: MCMirror,
-    pub mods: Option<HashMap<String, ModConfig>>,
+    pub mods: Option<BTreeMap<String, ModConfig>>,
 }
 
 impl RuntimeConfig {
@@ -101,7 +101,7 @@ impl RuntimeConfig {
         if let Some(mods) = self.mods.as_mut() {
             mods.insert(name.to_owned(), modconf);
         } else {
-            self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
+            self.mods = Some(BTreeMap::from([(name.to_owned(), modconf)]));
         }
     }
 
@@ -206,7 +206,7 @@ impl LockedModConfig {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct LockedConfig {
-    pub mods: Option<HashMap<String, LockedModConfig>>,
+    pub mods: Option<BTreeMap<String, LockedModConfig>>,
 }
 
 impl LockedConfig {
@@ -222,7 +222,7 @@ impl LockedConfig {
         if let Some(mods) = self.mods.as_mut() {
             mods.insert(name.to_owned(), modconf);
         } else {
-            self.mods = Some(HashMap::from([(name.to_owned(), modconf)]));
+            self.mods = Some(BTreeMap::from([(name.to_owned(), modconf)]));
         }
     }
 
