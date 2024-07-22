@@ -1,4 +1,4 @@
-workspace = { members = [ "mc-api", "modrinth-api"] }
+workspace = { members = [ "installer", "mc-api", "modrinth-api"] }
 [package]
 name = "launcher"
 version = "0.2.0"
@@ -34,7 +34,10 @@ features = [
 ]
 
 [dependencies.mc-api]
-path = "mc-api/"
+path = "mc-api"
 
 [dependencies.modrinth-api]
 path = "modrinth-api"
+
+[dependencies.installer]
+path = "installer"

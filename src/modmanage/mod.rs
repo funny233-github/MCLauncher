@@ -1,8 +1,8 @@
 use crate::asyncuntil::AsyncIterator;
 use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
-use crate::install::{InstallTask, InstallType, TaskPool};
 use anyhow::Result;
 use indicatif::{ProgressBar, ProgressStyle};
+use installer::{InstallTask, TaskPool};
 use modrinth_api::{Version, Versions};
 use std::{
     collections::VecDeque,
@@ -120,8 +120,8 @@ fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
             InstallTask {
                 url: v.url.to_owned().unwrap(),
                 sha1: Some(v.sha1.to_owned().unwrap()),
+                message: String::from(format!("mod {:?} installed", &save_file)),
                 save_file,
-                r#type: InstallType::Mods,
             }
         })
         .collect()
