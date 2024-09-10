@@ -120,7 +120,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
             InstallTask {
                 url: v.url.to_owned().unwrap(),
                 sha1: Some(v.sha1.to_owned().unwrap()),
-                message: String::from(format!("mod {:?} installed", &save_file)),
+                message: format!("mod {:?} installed", &save_file),
                 save_file,
             }
         })

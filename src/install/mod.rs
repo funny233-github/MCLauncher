@@ -256,7 +256,7 @@ fn client_installtask(
             .join("versions")
             .join(game_version)
             .join(game_version.to_owned() + ".jar"),
-        message: format!("client installed"),
+        message: "client installed".to_string(),
     })
 }
 
