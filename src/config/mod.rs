@@ -25,7 +25,7 @@ pub struct MCMirror {
 impl MCMirror {
     pub fn official_mirror() -> Self {
         MCMirror {
-            version_manifest: "https://launchermeta.mojang.com/".into(),
+            version_manifest: "https://piston-meta.mojang.com/".into(),
             assets: "https://resources.download.minecraft.net/".into(),
             client: "https://launcher.mojang.com/".into(),
             libraries: "https://libraries.minecraft.net/".into(),
