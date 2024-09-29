@@ -4,9 +4,9 @@ use std::{
 };
 
 pub trait AsyncIterator {
-    ///Execute an asynchronous function on multiple tasks.
+    ///Perform an asynchronous function on multiple tasks.
     ///# Arguments
-    ///- `task_num`: Number of tasks to execute the function on.
+    ///- `task_num`: The number of tasks on which to run the function.
     ///# Type Parameters
     ///- `F`: The type of future that will be executed. It must implement the `Future` trait and be `Send + 'static`.
     ///# Examples
@@ -18,6 +18,9 @@ pub trait AsyncIterator {
     ///     sleep(Duration::from_secs(1)).await;
     ///     println!("{}",x);
     ///}).async_execute(10);
+    ///# Might be deprecated
+    ///The async_iter was in the Rust standard nightly library
+    ///That's why this code may be deprecated.
     ///```
     #[tokio::main(flavor = "current_thread")]
     async fn async_execute<F>(self, task_num: usize)

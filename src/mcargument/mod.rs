@@ -55,7 +55,10 @@ fn replace_arguments_from_game(
         .into();
     let assets_index_name = js.assets;
     let valuemap = HashMap::from([
-        ("${auth_player_name}", handle.user_account().user_name.clone()),
+        (
+            "${auth_player_name}",
+            handle.user_account().user_name.clone(),
+        ),
         ("${version_name}", handle.config().game_version.clone()),
         ("${game_directory}", handle.config().game_dir.clone()),
         ("${assets_root}", assets_root),

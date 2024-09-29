@@ -130,7 +130,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
 pub fn install() -> Result<()> {
     // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
-    if config_handler.locked_config().mods.is_none() {
+    if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
         return Ok(());
     }
     config_handler.locked_config_mut().mods = Some(
@@ -229,14 +229,11 @@ fn sync_or_update(sync: bool) -> Result<()> {
         let bar = progress_bar(mods.len());
         mods.into_iter()
             .map(|(name, conf)| {
-                let origin_config_share = origin_config.clone();
-                let handle_share = config_handler.clone();
-                let bar_share = bar.clone();
                 sync_or_update_handle(
                     (name, conf, sync),
-                    origin_config_share,
-                    handle_share,
-                    bar_share,
+                    origin_config.clone(),
+                    config_handler.clone(),
+                    bar.clone(),
                 )
             })
             .async_execute(5);

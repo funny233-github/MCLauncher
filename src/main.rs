@@ -23,7 +23,7 @@ enum Command {
     #[command(subcommand)]
     List(ListSub),
 
-    /// Change user name
+    /// Change username
     Account { name: String },
 
     /// Install Minecraft
