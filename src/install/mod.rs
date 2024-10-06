@@ -166,7 +166,7 @@ fn test_libraries_installtask() {
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks =
         libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
-    assert!(tasks.len() > 0);
+    assert!(!tasks.is_empty());
 }
 
 fn native_installtask(
@@ -201,7 +201,7 @@ fn test_native_installtask() {
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks = native_installtask(game_dir, libraries_mirror, &version_json).unwrap();
-    assert!(tasks.len() > 0);
+    assert!(!tasks.is_empty());
 }
 
 fn native_extract(game_dir: &str, version_json: &Version) {
@@ -306,5 +306,5 @@ fn test_assets_installtask() {
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
     let task = assets_installtask(game_dir, assets_mirror, &assets_json);
-    assert!(task.len() > 0);
+    assert!(!task.is_empty());
 }
