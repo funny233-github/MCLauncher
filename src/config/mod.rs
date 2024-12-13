@@ -51,7 +51,7 @@ pub enum MCLoader {
     Fabric(String),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ModConfig {
     pub version: Option<String>,
     pub file_name: Option<String>,
@@ -174,7 +174,7 @@ impl From<VersionType> for official::VersionType {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct LockedModConfig {
     pub file_name: String,
     pub version: Option<String>,
@@ -396,6 +396,42 @@ impl ConfigHandler {
         Ok(())
     }
 
+    pub fn has_mod_name(&self, mod_name: &str) -> bool {
+        self.config()
+            .mods
+            .clone()
+            .unwrap()
+            .iter()
+            .any(|(name, _)| name == mod_name)
+    }
+
+    pub fn has_locked_mod_name(&self, mod_name: &str) -> bool {
+        self.locked_config()
+            .mods
+            .clone()
+            .unwrap()
+            .iter()
+            .any(|(name, _)| name == mod_name)
+    }
+
+    pub fn has_mod_config(&self, mod_conf: &ModConfig) -> bool {
+        self.config()
+            .mods
+            .clone()
+            .unwrap()
+            .iter()
+            .any(|(_, modconf)| modconf == mod_conf)
+    }
+
+    pub fn has_locked_mod_config(&self, mod_conf: &LockedModConfig) -> bool {
+        self.locked_config()
+            .mods
+            .clone()
+            .unwrap()
+            .iter()
+            .any(|(_, modconf)| modconf == mod_conf)
+    }
+
     /// Read config.toml and config.lock
     /// # Error
     /// Error when config.toml not exist
@@ -492,8 +528,12 @@ impl ConfigHandler {
         let path = Path::new(&self.config().game_dir).join("mods").join(name);
         fs::metadata(path)?;
 
-        self.config_mut().add_local_mod(name);
-        self.locked_config_mut().add_local_mod(name);
+        if self.has_mod_name(name) {
+            self.config_mut().add_local_mod(name);
+        }
+        if self.has_locked_mod_name(name) {
+            self.locked_config_mut().add_local_mod(name);
+        }
 
         Ok(())
     }
@@ -505,10 +545,14 @@ impl ConfigHandler {
         let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        self.config_mut().add_mod(name, modconf);
+        if !self.has_mod_config(&modconf) {
+            self.config_mut().add_mod(name, modconf);
+        }
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config_mut().add_mod(name, locked_modconf);
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
@@ -519,20 +563,29 @@ impl ConfigHandler {
         let version = fetch_version(name, version, &self.config).await?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        self.config_mut().add_mod(name, modconf);
+        if !self.has_mod_config(&modconf) {
+            self.config_mut().add_mod(name, modconf);
+        }
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config_mut().add_mod(name, locked_modconf);
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
     /// Add mod from Version data
     pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
         let modconf = ModConfig::from(version.clone());
-        self.config_mut().add_mod(name, modconf);
+        if !self.has_mod_config(&modconf) {
+            self.config_mut().add_mod(name, modconf);
+        }
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config_mut().add_mod(name, locked_modconf);
+
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
