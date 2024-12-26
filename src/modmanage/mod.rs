@@ -183,7 +183,11 @@ async fn sync_or_update_handle(
     bar_share: ProgressBar,
 ) {
     if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
-        if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
+        if sync
+            && mods.iter().any(|(mod_name, locked_conf)| {
+                mod_name == &name && conf.version == locked_conf.version
+            })
+        {
             bar_share.inc(1);
             bar_share.set_message(format!("Mod {} synced", name));
             return;

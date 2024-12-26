@@ -531,7 +531,9 @@ impl ConfigHandler {
         if !self.has_mod_name(name) {
             self.config_mut().add_local_mod(name);
         }
-        self.locked_config_mut().add_local_mod(name);
+        if !self.has_locked_mod_name(name) {
+            self.locked_config_mut().add_local_mod(name);
+        }
 
         Ok(())
     }
@@ -548,7 +550,9 @@ impl ConfigHandler {
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config_mut().add_mod(name, locked_modconf);
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
@@ -564,7 +568,9 @@ impl ConfigHandler {
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        self.locked_config_mut().add_mod(name, locked_modconf);
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
@@ -577,7 +583,9 @@ impl ConfigHandler {
 
         let locked_modconf = LockedModConfig::from(version);
 
-        self.locked_config_mut().add_mod(name, locked_modconf);
+        if !self.has_locked_mod_config(&locked_modconf) {
+            self.locked_config_mut().add_mod(name, locked_modconf);
+        }
         Ok(())
     }
 
