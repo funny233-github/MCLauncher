@@ -528,12 +528,10 @@ impl ConfigHandler {
         let path = Path::new(&self.config().game_dir).join("mods").join(name);
         fs::metadata(path)?;
 
-        if self.has_mod_name(name) {
+        if !self.has_mod_name(name) {
             self.config_mut().add_local_mod(name);
         }
-        if self.has_locked_mod_name(name) {
-            self.locked_config_mut().add_local_mod(name);
-        }
+        self.locked_config_mut().add_local_mod(name);
 
         Ok(())
     }
@@ -550,9 +548,7 @@ impl ConfigHandler {
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        if !self.has_locked_mod_config(&locked_modconf) {
-            self.locked_config_mut().add_mod(name, locked_modconf);
-        }
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
@@ -568,9 +564,7 @@ impl ConfigHandler {
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        if !self.has_locked_mod_config(&locked_modconf) {
-            self.locked_config_mut().add_mod(name, locked_modconf);
-        }
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
@@ -583,9 +577,7 @@ impl ConfigHandler {
 
         let locked_modconf = LockedModConfig::from(version);
 
-        if !self.has_locked_mod_config(&locked_modconf) {
-            self.locked_config_mut().add_mod(name, locked_modconf);
-        }
+        self.locked_config_mut().add_mod(name, locked_modconf);
         Ok(())
     }
 
