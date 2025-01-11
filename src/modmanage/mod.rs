@@ -1,6 +1,6 @@
-use crate::asyncuntil::AsyncIterator;
 use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
 use anyhow::Result;
+use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use installer::{InstallTask, TaskPool};
 use modrinth_api::{Version, Versions};
@@ -152,7 +152,7 @@ pub fn install() -> Result<()> {
             .collect(),
     );
     let tasks = mod_installtasks(&config_handler);
-    TaskPool::from(tasks).install()?;
+    TaskPool::from(tasks).install();
     Ok(())
 }
 
@@ -225,22 +225,25 @@ async fn sync_or_update_handle(
     }
 }
 
-fn sync_or_update(sync: bool) -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn sync_or_update(sync: bool) -> Result<()> {
     let config_handler = ConfigHandler::read()?;
     if let Some(mods) = config_handler.config().mods.to_owned() {
         let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len());
-        mods.into_iter()
-            .map(|(name, conf)| {
-                sync_or_update_handle(
-                    (name, conf, sync),
-                    origin_config.clone(),
-                    config_handler.clone(),
-                    bar.clone(),
-                )
-            })
-            .async_execute(5);
+        let tasks = mods.into_iter().map(|(name, conf)| {
+            sync_or_update_handle(
+                (name, conf, sync),
+                origin_config.clone(),
+                config_handler.clone(),
+                bar.clone(),
+            )
+        });
+        stream::iter(tasks)
+            .buffer_unordered(10)
+            .collect::<Vec<_>>()
+            .await;
     }
 
     if sync {

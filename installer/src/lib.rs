@@ -1,5 +1,4 @@
-pub mod asyncuntil;
-use crate::asyncuntil::AsyncIterator;
+use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use log::warn;
 use reqwest::header;
@@ -55,7 +54,7 @@ async fn fetch_bytes(
         let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
-            .timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(128))
             .send()
             .await;
         let data = match send {
@@ -67,7 +66,7 @@ async fn fetch_bytes(
                 return Ok(_data);
             }
         };
-        warn!("install fail, then retry");
+        warn!("install {url} fail, then retry");
         tokio::time::sleep(sleep_time).await;
     }
     Err(anyhow::anyhow!("download {url} fail"))
@@ -120,26 +119,23 @@ where
     }
 }
 
-const MAX_THREAD: usize = 64;
-
 impl<T> TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
     //Execute all install task.
-    //# Error
-    //Return Error when install fail 5 times
-    pub fn install(self) -> anyhow::Result<()> {
-        self.pool
-            .into_iter()
-            .map(|x| {
-                let share = self.bar.clone();
-                async move {
-                    x.install().await.unwrap();
-                    x.bar_update(&share);
-                }
-            })
-            .async_execute(MAX_THREAD);
-        Ok(())
+    #[tokio::main(flavor = "current_thread")]
+    pub async fn install(self) {
+        let tasks = self.pool.into_iter().map(|x| {
+            let share = self.bar.clone();
+            async move {
+                x.install().await.unwrap();
+                x.bar_update(&share);
+            }
+        });
+        stream::iter(tasks)
+            .buffer_unordered(64)
+            .collect::<VecDeque<_>>()
+            .await;
     }
 }

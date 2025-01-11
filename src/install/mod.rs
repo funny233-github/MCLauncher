@@ -121,7 +121,7 @@ fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Re
         &config.mirror.libraries,
         version,
     )?);
-    TaskPool::from(tasks).install()?;
+    TaskPool::from(tasks).install();
     println!("extracting natives ...");
     native_extract(&config.game_dir, version);
     Ok(())
