@@ -1,41 +1,29 @@
 use crate::config::{MCLoader, RuntimeConfig};
-use indicatif::{ProgressBar, ProgressStyle};
-use log::warn;
+use installer::{InstallTask, TaskPool};
 use mc_api::{
-    fabric::Profile,
-    official::{Assets, Version, VersionManifest},
+    fabric::{Loader, Profile},
+    official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
-use reqwest::header;
-use sha1::{Digest, Sha1};
 use std::{
     borrow::Cow,
-    cmp::Ordering,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
-    sync::{mpsc, Arc, Mutex},
-    thread,
 };
+use zip::ZipArchive;
 
-const MAX_THREAD: usize = 32;
+#[cfg(target_os = "windows")]
+const OS: &str = "windows";
 
-trait Sha1Compare {
-    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
-    where
-        C: AsRef<str> + Into<String>;
-}
+#[cfg(target_os = "linux")]
+const OS: &str = "linux";
+
+#[cfg(target_os = "macos")]
+const OS: &str = "osx";
 
 trait DomainReplacer<T> {
     fn replace_domain(&self, domain: &str) -> T;
-}
-
-trait PathExist {
-    fn path_exists(&self) -> bool;
-}
-
-pub trait FileInstall {
-    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()>;
 }
 
 impl DomainReplacer<String> for String {
@@ -46,307 +34,96 @@ impl DomainReplacer<String> for String {
     }
 }
 
-impl<T> Sha1Compare for T
-where
-    T: AsRef<[u8]>,
-{
-    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
-    where
-        C: AsRef<str> + Into<String>,
-    {
-        let mut hasher = Sha1::new();
-        hasher.update(self);
-        let sha1 = hasher.finalize();
-        hex::encode(sha1).cmp(&sha1code.into())
-    }
-}
-
-impl<T> PathExist for T
-where
-    T: AsRef<Path>,
-{
-    fn path_exists(&self) -> bool {
-        fs::metadata(self).is_ok()
-    }
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum InstallType {
     #[default]
     Asset,
     Library,
     Client,
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct InstallTask {
-    pub url: String,
-    pub sha1: Option<String>,
-    pub save_file: PathBuf,
-    pub r#type: InstallType,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
-{
-    pub pool: Arc<Mutex<VecDeque<T>>>,
-}
-
-fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
-    let client = reqwest::blocking::Client::new();
-    for _ in 0..5 {
-        let send = client
-            .get(url)
-            .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
-            .send();
-        let data = send.and_then(|x| x.bytes());
-        if let Ok(_data) = data {
-            if sha1.is_none() {
-                return Ok(_data);
-            }
-            if _data.sha1_cmp(sha1.as_ref().unwrap()).is_eq() {
-                return Ok(_data);
-            }
-        };
-        warn!("install fail, then retry");
-        thread::sleep(std::time::Duration::from_secs(3));
-    }
-    Err(anyhow::anyhow!("download {url} fail"))
-}
-
-impl FileInstall for InstallTask {
-    fn install(&self, bar: &ProgressBar) -> anyhow::Result<()> {
-        if self.sha1.is_none()
-            || !(self.save_file.path_exists()
-                && fs::read(&self.save_file)
-                    .unwrap()
-                    .sha1_cmp(self.sha1.as_ref().unwrap())
-                    .is_eq())
-        {
-            let data = fetch_bytes(&self.url, &self.sha1)?;
-            fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
-            fs::write(&self.save_file, data).unwrap();
-        }
-        bar.inc(1);
-        match &self.r#type {
-            InstallType::Asset => {
-                bar.set_message(format!("Asset {} installed", self.sha1.as_ref().unwrap()))
-            }
-            InstallType::Library => bar.set_message(format!(
-                "library {:?} installed",
-                self.save_file.file_name().unwrap()
-            )),
-            InstallType::Client => bar.set_message("client installed"),
-        }
-        Ok(())
-    }
-}
-
-impl<T> TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + 'static + std::marker::Sync + Clone,
-{
-    ///Constructs a new TaskPool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask};
-    ///let pool:TaskPool<InstallTask> = TaskPool::new();
-    ///```
-    pub fn new() -> Self {
-        TaskPool {
-            pool: Arc::new(Mutex::new(VecDeque::new())),
-        }
-    }
-
-    ///Returns the number of task in the Pool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.len(), 0);
-    ///pool.push_back(task);
-    ///assert_eq!(pool.len(), 1);
-    ///```
-    pub fn len(&self) -> usize {
-        self.pool.lock().unwrap().len()
-    }
-
-    ///Returns `true` if the Pool is empty.
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask};
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert!(pool.is_empty());
-    ///pool.push_back(task);
-    ///assert!(!pool.is_empty());
-    ///```
-    pub fn is_empty(&self) -> bool {
-        self.pool.lock().unwrap().is_empty()
-    }
-
-    ///Removes the last task from the Pool and returns it, or `None` if
-    ///it is empty
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::path::Path;
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.pop_back(), None);
-    ///pool.push_back(task.clone());
-    ///assert_eq!(pool.pop_back(), Some(task));
-    pub fn pop_back(&self) -> Option<T> {
-        self.pool.lock().unwrap().pop_back()
-    }
-
-    ///Appends an task to the back of the Pool
-    ///# Panics
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::path::Path;
-    ///let mut pool = TaskPool::new();
-    ///let task = InstallTask::default();
-    ///assert_eq!(pool.len(), 0);
-    ///pool.push_back(task);
-    ///assert_eq!(pool.len(), 1);
-    ///```
-    pub fn push_back(&self, value: T) {
-        self.pool.lock().unwrap().push_back(value)
-    }
-
-    ///Moves all the tasks of `other` into `self`, leaving `other` empty.
-    ///# Notice
-    ///The `other` must be a `&mut VecDeque<T>` type
-    ///# Panics
-    ///Panics if the new number of elements in self overflows a `usize`
-    ///This function might panic when called if the lock is already held by
-    ///the current thread
-    ///# Examples
-    ///```
-    ///use launcher::install::{TaskPool, InstallTask, InstallType};
-    ///use std::collections::VecDeque;
-    ///use std::path::Path;
-    ///let mut pool1 = TaskPool::new();
-    ///let mut p = VecDeque::new();
-    ///let task = InstallTask::default();
-    ///p.push_back(task.clone());
-    ///pool1.push_back(task.clone());
-    ///pool1.append(&mut p);
-    ///assert_eq!(pool1.len(), 2);
-    ///```
-    pub fn append(&self, other: &mut VecDeque<T>) {
-        self.pool.lock().unwrap().append(other);
-    }
-
-    //Execute all install task.
-    //# Error
-    //Return Error when install fail 5 times
-    pub fn install(self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel();
-        let bar = ProgressBar::new(self.len() as u64);
-        bar.set_style(
-            ProgressStyle::with_template(
-                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
-        let mut handles = vec![];
-        for _ in 0..MAX_THREAD {
-            let tasks_share = self.clone();
-            let bar_share = bar.clone();
-            let tx_share = tx.clone();
-            let thr = thread::spawn(move || loop {
-                if let Some(task) = tasks_share.pop_back() {
-                    tx_share.send(task.install(&bar_share)).unwrap();
-                } else {
-                    return;
-                }
-            });
-            handles.push(thr);
-        }
-        drop(tx);
-        for received in rx {
-            received?;
-        }
-        for handle in handles {
-            handle.join().unwrap();
-        }
-        Ok(())
-    }
+    Mods,
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    println!("fetch version manifest...");
-    let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
-    println!("fetch version...");
-    let mut version = Version::fetch(
-        manifest,
-        &config.game_version,
-        &config.mirror.version_manifest,
-    )?;
-    if let MCLoader::Fabric(v) = &config.loader {
-        println!("fetch fabric profile...");
-        let game_version = Cow::from(&config.game_version);
-        let loader_version = Cow::from(v);
-        let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
-        version.merge(profile)
-    }
+    let version = fetch_version(config)?;
 
     let version_json_file = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
         .join(config.game_version.clone() + ".json");
     version.install(&version_json_file);
+
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
 
-    let game_dir = &config.game_dir;
-    let game_version = &config.game_version;
-    let asset_index_file = Path::new(game_dir)
+    install_dependencies(config, &version)?;
+    Ok(())
+}
+
+fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
+    println!("fetching version manifest...");
+    let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
+
+    if !manifest
+        .versions
+        .iter()
+        .any(|x| x.id == config.game_version)
+    {
+        return Err(anyhow::anyhow!(
+            "Cant' find the minecraft version {}",
+            &config.game_version
+        ));
+    }
+
+    println!("fetching version...");
+    let mut version = Version::fetch(
+        manifest,
+        &config.game_version,
+        &config.mirror.version_manifest,
+    )?;
+    if let MCLoader::Fabric(v) = &config.loader {
+        println!("fetching fabric loaders version...");
+        let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
+        if !loaders.iter().any(|x| &x.version == v) {
+            return Err(anyhow::anyhow!("Cant' find the loader version {}", v));
+        }
+        println!("fetching fabric profile...");
+        let game_version = Cow::from(&config.game_version);
+        let loader_version = Cow::from(v);
+        let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
+        version.merge(profile)
+    }
+    Ok(version)
+}
+
+fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Result<()> {
+    let asset_index_file = Path::new(&config.game_dir)
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
-    println!("fetch assets...");
+    println!("fetching assets/libraries/natives...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
-
-    let tasks = TaskPool::new();
-    tasks.append(&mut assets_installtask(
-        game_dir,
-        &config.mirror.assets,
-        &assets,
-    ));
+    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets);
     tasks.append(&mut libraries_installtask(
-        game_dir,
+        &config.game_dir,
         &config.mirror.libraries,
         &config.mirror.fabric_maven,
-        &version,
+        version,
     )?);
     tasks.push_back(client_installtask(
-        game_dir,
-        game_version,
+        &config.game_dir,
+        &config.game_version,
         &config.mirror.client,
-        &version,
+        version,
     )?);
-    tasks.install()?;
-
+    tasks.append(&mut native_installtask(
+        &config.game_dir,
+        &config.mirror.libraries,
+        version,
+    )?);
+    TaskPool::from(tasks).install();
+    println!("extracting natives ...");
+    native_extract(&config.game_dir, version);
     Ok(())
 }
 
@@ -368,14 +145,97 @@ fn libraries_installtask(
             } else {
                 libraries_mirror
             };
+            let save_file = Path::new(game_dir).join("libraries").join(path);
             InstallTask {
-                url: mirror.to_owned() + &path,
+                url: mirror.to_owned() + path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(path),
-                r#type: InstallType::Library,
+                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                save_file,
             }
         })
         .collect())
+}
+
+#[test]
+fn test_libraries_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let fabric_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let tasks =
+        libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
+    assert!(!tasks.is_empty());
+}
+
+fn native_installtask(
+    game_dir: &str,
+    mirror: &str,
+    version_json: &Version,
+) -> anyhow::Result<VecDeque<InstallTask>> {
+    let libraries = &version_json.libraries;
+    Ok(libraries
+        .iter()
+        .filter(|obj| obj.is_target_native())
+        .map(|x| {
+            let key = x.natives.as_ref().unwrap().get(OS).unwrap();
+            let artifact: &Artifact = x.downloads.classifiers.as_ref().unwrap().get(key).unwrap();
+            let path = &artifact.path;
+            let save_file = Path::new(game_dir).join("libraries").join(path);
+            InstallTask {
+                url: mirror.to_owned() + path,
+                sha1: artifact.sha1.clone(),
+                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                save_file,
+            }
+        })
+        .collect())
+}
+
+#[test]
+fn test_native_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let tasks = native_installtask(game_dir, libraries_mirror, &version_json).unwrap();
+    assert!(!tasks.is_empty());
+}
+
+fn native_extract(game_dir: &str, version_json: &Version) {
+    let libraries = &version_json.libraries;
+    for lib in libraries {
+        if lib.is_target_native() {
+            let key = lib.natives.as_ref().unwrap().get(OS).unwrap();
+            let artifact: &Artifact = lib
+                .downloads
+                .classifiers
+                .as_ref()
+                .unwrap()
+                .get(key)
+                .unwrap();
+            let file_path = Path::new(game_dir).join("libraries").join(&artifact.path);
+            extract(game_dir, file_path);
+        }
+    }
+}
+
+fn extract(game_dir: &str, path: PathBuf) {
+    let jar_file = fs::File::open(path).unwrap();
+    let mut zip = ZipArchive::new(jar_file).unwrap();
+    let regex = Regex::new(r"\S+.so$").unwrap();
+    for i in 0..zip.len() {
+        let mut entry = zip.by_index(i).unwrap();
+        if !entry.is_dir() && regex.captures(entry.name()).is_some() {
+            let file_path = format!("{}natives/{}", game_dir, entry.name());
+            let file_path = Path::new(&file_path);
+            fs::create_dir_all(file_path.parent().unwrap()).unwrap();
+            let mut output = fs::File::create(file_path).unwrap();
+            std::io::copy(&mut entry, &mut output).unwrap();
+        }
+    }
 }
 
 fn client_installtask(
@@ -396,8 +256,20 @@ fn client_installtask(
             .join("versions")
             .join(game_version)
             .join(game_version.to_owned() + ".jar"),
-        r#type: InstallType::Client,
+        message: "client installed".to_string(),
     })
+}
+
+#[test]
+fn test_client_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let game_version = "1.16.5";
+    let client_mirror = "https://bmclapi2.bangbang93.com/";
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let task = client_installtask(game_dir, game_version, client_mirror, &version_json);
+    assert!(task.is_ok());
 }
 
 fn assets_installtask(
@@ -409,15 +281,30 @@ fn assets_installtask(
         .objects
         .clone()
         .into_iter()
-        .map(|x| InstallTask {
-            url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
-            sha1: Some(x.1.hash.clone()),
-            save_file: Path::new(game_dir)
-                .join("assets")
-                .join("objects")
-                .join(&x.1.hash[0..2])
-                .join(x.1.hash.clone()),
-            r#type: InstallType::Asset,
+        .map(|x| {
+            let sha1 = Some(x.1.hash.clone());
+            InstallTask {
+                url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
+                save_file: Path::new(game_dir)
+                    .join("assets")
+                    .join("objects")
+                    .join(&x.1.hash[0..2])
+                    .join(x.1.hash.clone()),
+                message: format!("Asset {} installed", sha1.as_ref().unwrap()),
+                sha1,
+            }
         })
         .collect()
+}
+
+#[test]
+fn test_assets_installtask() {
+    let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+    let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
+    let game_dir = "test_dir/";
+    let assets_mirror = "https://bmclapi2.bangbang93.com/";
+    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
+    let task = assets_installtask(game_dir, assets_mirror, &assets_json);
+    assert!(!task.is_empty());
 }

@@ -1,4 +1,4 @@
-use crate::config::RuntimeConfig;
+use crate::config::ConfigHandler;
 use mc_api::official::Version;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -15,23 +15,23 @@ const CLASSPATH_SEPARATOR: &str = ":";
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
     args.iter()
-        .map(|x| {
-            if let Some(c) = regex.captures(x.as_str()) {
-                if let Some(content) = valuemap.get(&c["replace"]) {
-                    return x.replace(&c["replace"], content);
-                }
-            }
-            x.into()
+        .map(|arg| {
+            regex
+                .captures(arg.as_str())
+                .and_then(|captures| valuemap.get_key_value(&captures["replace"]))
+                .map_or(arg.to_string(), |(capture, content)| {
+                    arg.replace(capture, content)
+                })
         })
         .collect()
 }
 
 fn replace_arguments_from_jvm(
     args: Vec<String>,
-    config: &RuntimeConfig,
+    handle: &ConfigHandler,
     version_api: &Version,
 ) -> anyhow::Result<Vec<String>> {
-    let natives_dir = Path::new(&config.game_dir)
+    let natives_dir: String = Path::new(&handle.config().game_dir)
         .join("natives")
         .to_string_lossy()
         .into();
@@ -39,29 +39,32 @@ fn replace_arguments_from_jvm(
         ("${natives_directory}", natives_dir),
         ("${launcher_name}", "my_launcher".into()),
         ("${launcher_version}", "114.514".into()),
-        ("${classpath}", config.get_classpaths(version_api)?),
+        ("${classpath}", handle.get_classpaths(version_api)?),
     ]);
     Ok(replace_arguments(args, valuemap))
 }
 
 fn replace_arguments_from_game(
     args: Vec<String>,
-    config: &RuntimeConfig,
+    handle: &ConfigHandler,
 ) -> anyhow::Result<Vec<String>> {
-    let js = config.version_api()?;
-    let assets_root: String = Path::new(&config.game_dir)
+    let js = handle.version_api()?;
+    let assets_root: String = Path::new(&handle.config().game_dir)
         .join("assets")
         .to_string_lossy()
         .into();
     let assets_index_name = js.assets;
     let valuemap = HashMap::from([
-        ("${auth_player_name}", config.user_name.clone()),
-        ("${version_name}", config.game_version.clone()),
-        ("${game_directory}", config.game_dir.clone()),
+        (
+            "${auth_player_name}",
+            handle.user_account().user_name.clone(),
+        ),
+        ("${version_name}", handle.config().game_version.clone()),
+        ("${game_directory}", handle.config().game_dir.clone()),
         ("${assets_root}", assets_root),
         ("${assets_index_name}", assets_index_name),
-        ("${auth_uuid}", config.user_uuid.clone()),
-        ("${user_type}", config.user_type.clone()),
+        ("${auth_uuid}", handle.user_account().user_uuid.clone()),
+        ("${user_type}", handle.user_account().user_type.clone()),
         ("${version_type}", "release".into()),
     ]);
     //TODO get user info
@@ -70,10 +73,10 @@ fn replace_arguments_from_game(
     Ok(replace_arguments(args, valuemap))
 }
 
-impl RuntimeConfig {
+impl ConfigHandler {
     pub fn args_provider(&self) -> anyhow::Result<Vec<String>> {
         let mut args = vec![
-            format!("-Xmx{}m", self.max_memory_size),
+            format!("-Xmx{}m", self.config().max_memory_size),
             format!("-Xmn256m"),
             format!("-XX:+UseG1GC"),
             format!("-XX:-UseAdaptiveSizePolicy"),
@@ -114,7 +117,7 @@ impl RuntimeConfig {
             .iter()
             .filter(|x| x.is_target_lib())
             .map(|x| {
-                Path::new(&self.game_dir)
+                Path::new(&self.config().game_dir)
                     .join("libraries")
                     .join(&x.downloads.artifact.path)
                     .to_string_lossy()
@@ -122,10 +125,10 @@ impl RuntimeConfig {
             })
             .collect();
 
-        let client_path = Path::new(&self.game_dir)
+        let client_path = Path::new(&self.config().game_dir)
             .join("versions")
-            .join(&self.game_version)
-            .join(self.game_version.clone() + ".jar")
+            .join(&self.config().game_version)
+            .join(self.config().game_version.clone() + ".jar")
             .to_string_lossy()
             .into();
         paths.push(client_path);
@@ -133,10 +136,10 @@ impl RuntimeConfig {
     }
 
     fn version_api(&self) -> anyhow::Result<Version> {
-        let jsfile_path = Path::new(&self.game_dir)
+        let jsfile_path = Path::new(&self.config().game_dir)
             .join("versions")
-            .join(&self.game_version)
-            .join(self.game_version.clone() + ".json");
+            .join(&self.config().game_version)
+            .join(self.config().game_version.to_owned() + ".json");
         let jsfile = fs::read_to_string(jsfile_path)?;
         Ok(serde_json::from_str(&jsfile)?)
     }
