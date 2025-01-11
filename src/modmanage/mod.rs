@@ -1,8 +1,8 @@
-use crate::asyncuntil::AsyncIterator;
 use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
-use crate::install::{InstallTask, InstallType, TaskPool};
 use anyhow::Result;
+use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
+use installer::{InstallTask, TaskPool};
 use modrinth_api::{Version, Versions};
 use std::{
     collections::VecDeque,
@@ -120,8 +120,8 @@ fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
             InstallTask {
                 url: v.url.to_owned().unwrap(),
                 sha1: Some(v.sha1.to_owned().unwrap()),
+                message: format!("mod {:?} installed", &save_file),
                 save_file,
-                r#type: InstallType::Mods,
             }
         })
         .collect()
@@ -130,7 +130,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
 pub fn install() -> Result<()> {
     // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
-    if config_handler.locked_config().mods.is_none() {
+    if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
         return Ok(());
     }
     config_handler.locked_config_mut().mods = Some(
@@ -152,7 +152,7 @@ pub fn install() -> Result<()> {
             .collect(),
     );
     let tasks = mod_installtasks(&config_handler);
-    TaskPool::from(tasks).install()?;
+    TaskPool::from(tasks).install();
     Ok(())
 }
 
@@ -183,7 +183,11 @@ async fn sync_or_update_handle(
     bar_share: ProgressBar,
 ) {
     if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
-        if sync && mods.iter().any(|(mod_name, _)| mod_name == &name) {
+        if sync
+            && mods.iter().any(|(mod_name, locked_conf)| {
+                mod_name == &name && conf.version == locked_conf.version
+            })
+        {
             bar_share.inc(1);
             bar_share.set_message(format!("Mod {} synced", name));
             return;
@@ -221,25 +225,25 @@ async fn sync_or_update_handle(
     }
 }
 
-fn sync_or_update(sync: bool) -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn sync_or_update(sync: bool) -> Result<()> {
     let config_handler = ConfigHandler::read()?;
     if let Some(mods) = config_handler.config().mods.to_owned() {
         let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len());
-        mods.into_iter()
-            .map(|(name, conf)| {
-                let origin_config_share = origin_config.clone();
-                let handle_share = config_handler.clone();
-                let bar_share = bar.clone();
-                sync_or_update_handle(
-                    (name, conf, sync),
-                    origin_config_share,
-                    handle_share,
-                    bar_share,
-                )
-            })
-            .async_execute(5);
+        let tasks = mods.into_iter().map(|(name, conf)| {
+            sync_or_update_handle(
+                (name, conf, sync),
+                origin_config.clone(),
+                config_handler.clone(),
+                bar.clone(),
+            )
+        });
+        stream::iter(tasks)
+            .buffer_unordered(10)
+            .collect::<Vec<_>>()
+            .await;
     }
 
     if sync {

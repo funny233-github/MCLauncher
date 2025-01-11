@@ -1,25 +1,17 @@
-use crate::asyncuntil::AsyncIterator;
 use crate::config::{MCLoader, RuntimeConfig};
-use indicatif::{ProgressBar, ProgressStyle};
-use log::warn;
+use installer::{InstallTask, TaskPool};
 use mc_api::{
     fabric::{Loader, Profile},
     official::{Artifact, Assets, Version, VersionManifest},
 };
 use regex::Regex;
-use reqwest::header;
-use sha1::{Digest, Sha1};
-use std::time::Duration;
 use std::{
     borrow::Cow,
-    cmp::Ordering,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
 };
 use zip::ZipArchive;
-
-const MAX_THREAD: usize = 64;
 
 #[cfg(target_os = "windows")]
 const OS: &str = "windows";
@@ -30,23 +22,8 @@ const OS: &str = "linux";
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
-trait ShaCompare {
-    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
-    where
-        C: AsRef<str> + Into<String>;
-}
-
 trait DomainReplacer<T> {
     fn replace_domain(&self, domain: &str) -> T;
-}
-
-trait PathExist {
-    fn path_exists(&self) -> bool;
-}
-
-pub trait FileInstall {
-    fn install(&self) -> impl std::future::Future<Output = anyhow::Result<()>> + Send;
-    fn bar_update(&self, bar: &ProgressBar);
 }
 
 impl DomainReplacer<String> for String {
@@ -57,30 +34,6 @@ impl DomainReplacer<String> for String {
     }
 }
 
-impl<T> ShaCompare for T
-where
-    T: AsRef<[u8]>,
-{
-    fn sha1_cmp<C>(&self, sha1code: C) -> Ordering
-    where
-        C: AsRef<str> + Into<String>,
-    {
-        let mut hasher = Sha1::new();
-        hasher.update(self);
-        let sha1 = hasher.finalize();
-        hex::encode(sha1).cmp(&sha1code.into())
-    }
-}
-
-impl<T> PathExist for T
-where
-    T: AsRef<Path>,
-{
-    fn path_exists(&self) -> bool {
-        fs::metadata(self).is_ok()
-    }
-}
-
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum InstallType {
     #[default]
@@ -88,123 +41,6 @@ pub enum InstallType {
     Library,
     Client,
     Mods,
-}
-
-#[derive(Debug, Default, Clone, PartialEq)]
-pub struct InstallTask {
-    pub url: String,
-    pub sha1: Option<String>,
-    pub save_file: PathBuf,
-    pub r#type: InstallType,
-}
-
-async fn fetch_bytes(url: &String, sha1: &Option<String>) -> anyhow::Result<bytes::Bytes> {
-    let client = reqwest::Client::new();
-    for _ in 0..5 {
-        let send = client
-            .get(url)
-            .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
-            .timeout(Duration::from_secs(10))
-            .send()
-            .await;
-        let data = match send {
-            Ok(_send) => _send.bytes().await,
-            Err(e) => Err(e),
-        };
-        if let Ok(_data) = data {
-            if sha1.is_none() {
-                return Ok(_data);
-            }
-            if _data.sha1_cmp(sha1.as_ref().unwrap()).is_eq() {
-                return Ok(_data);
-            }
-        };
-        warn!("install fail, then retry");
-        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-    }
-    Err(anyhow::anyhow!("download {url} fail"))
-}
-
-impl FileInstall for InstallTask {
-    async fn install(&self) -> anyhow::Result<()> {
-        if self.sha1.is_none()
-            || !(self.save_file.path_exists()
-                && fs::read(&self.save_file)
-                    .unwrap()
-                    .sha1_cmp(self.sha1.as_ref().unwrap())
-                    .is_eq())
-        {
-            let data = fetch_bytes(&self.url, &self.sha1).await?;
-            fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
-            fs::write(&self.save_file, data).unwrap();
-        }
-        Ok(())
-    }
-    fn bar_update(&self, bar: &ProgressBar) {
-        bar.inc(1);
-        match &self.r#type {
-            InstallType::Asset => {
-                bar.set_message(format!("Asset {} installed", self.sha1.as_ref().unwrap()))
-            }
-            InstallType::Library => bar.set_message(format!(
-                "library {:?} installed",
-                self.save_file.file_name().unwrap()
-            )),
-            InstallType::Client => bar.set_message("client installed"),
-            InstallType::Mods => bar.set_message(format!(
-                "mod {:?} installed",
-                self.save_file.file_name().unwrap()
-            )),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + std::marker::Sync + Clone + 'static,
-{
-    pub pool: VecDeque<T>,
-    bar: ProgressBar,
-}
-
-impl<T> From<VecDeque<T>> for TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
-{
-    fn from(tasks: VecDeque<T>) -> Self {
-        let bar = ProgressBar::new(tasks.len() as u64);
-        bar.set_style(
-            ProgressStyle::with_template(
-                "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
-        Self { pool: tasks, bar }
-    }
-}
-
-impl<T> TaskPool<T>
-where
-    T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
-{
-    //Execute all install task.
-    //# Error
-    //Return Error when install fail 5 times
-    pub fn install(self) -> anyhow::Result<()> {
-        self.pool
-            .into_iter()
-            .map(|x| {
-                let share = self.bar.clone();
-                async move {
-                    x.install().await.unwrap();
-                    x.bar_update(&share);
-                }
-            })
-            .async_execute(MAX_THREAD);
-        Ok(())
-    }
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
@@ -285,7 +121,7 @@ fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Re
         &config.mirror.libraries,
         version,
     )?);
-    TaskPool::from(tasks).install()?;
+    TaskPool::from(tasks).install();
     println!("extracting natives ...");
     native_extract(&config.game_dir, version);
     Ok(())
@@ -309,11 +145,12 @@ fn libraries_installtask(
             } else {
                 libraries_mirror
             };
+            let save_file = Path::new(game_dir).join("libraries").join(path);
             InstallTask {
                 url: mirror.to_owned() + path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(path),
-                r#type: InstallType::Library,
+                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                save_file,
             }
         })
         .collect())
@@ -329,7 +166,7 @@ fn test_libraries_installtask() {
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks =
         libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
-    assert!(tasks.len() > 0);
+    assert!(!tasks.is_empty());
 }
 
 fn native_installtask(
@@ -345,11 +182,12 @@ fn native_installtask(
             let key = x.natives.as_ref().unwrap().get(OS).unwrap();
             let artifact: &Artifact = x.downloads.classifiers.as_ref().unwrap().get(key).unwrap();
             let path = &artifact.path;
+            let save_file = Path::new(game_dir).join("libraries").join(path);
             InstallTask {
                 url: mirror.to_owned() + path,
                 sha1: artifact.sha1.clone(),
-                save_file: Path::new(game_dir).join("libraries").join(path),
-                r#type: InstallType::Library,
+                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                save_file,
             }
         })
         .collect())
@@ -363,7 +201,7 @@ fn test_native_installtask() {
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks = native_installtask(game_dir, libraries_mirror, &version_json).unwrap();
-    assert!(tasks.len() > 0);
+    assert!(!tasks.is_empty());
 }
 
 fn native_extract(game_dir: &str, version_json: &Version) {
@@ -418,7 +256,7 @@ fn client_installtask(
             .join("versions")
             .join(game_version)
             .join(game_version.to_owned() + ".jar"),
-        r#type: InstallType::Client,
+        message: "client installed".to_string(),
     })
 }
 
@@ -443,15 +281,18 @@ fn assets_installtask(
         .objects
         .clone()
         .into_iter()
-        .map(|x| InstallTask {
-            url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
-            sha1: Some(x.1.hash.clone()),
-            save_file: Path::new(game_dir)
-                .join("assets")
-                .join("objects")
-                .join(&x.1.hash[0..2])
-                .join(x.1.hash.clone()),
-            r#type: InstallType::Asset,
+        .map(|x| {
+            let sha1 = Some(x.1.hash.clone());
+            InstallTask {
+                url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
+                save_file: Path::new(game_dir)
+                    .join("assets")
+                    .join("objects")
+                    .join(&x.1.hash[0..2])
+                    .join(x.1.hash.clone()),
+                message: format!("Asset {} installed", sha1.as_ref().unwrap()),
+                sha1,
+            }
         })
         .collect()
 }
@@ -465,5 +306,5 @@ fn test_assets_installtask() {
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
     let task = assets_installtask(game_dir, assets_mirror, &assets_json);
-    assert!(task.len() > 0);
+    assert!(!task.is_empty());
 }

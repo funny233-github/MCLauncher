@@ -15,13 +15,13 @@ const CLASSPATH_SEPARATOR: &str = ":";
 fn replace_arguments(args: Vec<String>, valuemap: HashMap<&str, String>) -> Vec<String> {
     let regex = Regex::new(r"(?<replace>\$\{\S+\})").unwrap();
     args.iter()
-        .map(|x| {
-            if let Some(c) = regex.captures(x.as_str()) {
-                if let Some(content) = valuemap.get(&c["replace"]) {
-                    return x.replace(&c["replace"], content);
-                }
-            }
-            x.into()
+        .map(|arg| {
+            regex
+                .captures(arg.as_str())
+                .and_then(|captures| valuemap.get_key_value(&captures["replace"]))
+                .map_or(arg.to_string(), |(capture, content)| {
+                    arg.replace(capture, content)
+                })
         })
         .collect()
 }
@@ -31,7 +31,7 @@ fn replace_arguments_from_jvm(
     handle: &ConfigHandler,
     version_api: &Version,
 ) -> anyhow::Result<Vec<String>> {
-    let natives_dir = Path::new(&handle.config().game_dir)
+    let natives_dir: String = Path::new(&handle.config().game_dir)
         .join("natives")
         .to_string_lossy()
         .into();
@@ -55,7 +55,10 @@ fn replace_arguments_from_game(
         .into();
     let assets_index_name = js.assets;
     let valuemap = HashMap::from([
-        ("${auth_player_name}", handle.user_account().user_name.clone()),
+        (
+            "${auth_player_name}",
+            handle.user_account().user_name.clone(),
+        ),
         ("${version_name}", handle.config().game_version.clone()),
         ("${game_directory}", handle.config().game_dir.clone()),
         ("${assets_root}", assets_root),
