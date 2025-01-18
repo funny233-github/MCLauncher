@@ -233,8 +233,7 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
     let libraries = &version_json.libraries;
     libraries
         .iter()
-        .filter(|lib| lib.is_target_native())
-        .map(|lib| {
+        .filter(|lib| lib.is_target_native()).try_for_each(|lib| {
             let key = lib
                 .natives
                 .as_ref()
@@ -252,7 +251,6 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
             extract(game_dir, file_path)?;
             Ok(())
         })
-        .collect()
 }
 
 fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
@@ -285,8 +283,7 @@ fn client_installtask(
     let json_client = &version_json.downloads["client"];
     Ok(InstallTask {
         url: json_client["url"]
-            .as_str()
-            .and_then(|str| Some(str.to_string().replace_domain(client_mirror)))
+            .as_str().map(|str| str.to_string().replace_domain(client_mirror))
             .ok_or_else(|| anyhow::anyhow!("take url failed"))??,
         sha1: Some(
             json_client["sha1"]
