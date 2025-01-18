@@ -105,30 +105,36 @@ pub fn update(config_only: bool) -> Result<()> {
     Ok(())
 }
 
-fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
+fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
     handle
         .locked_config()
         .mods
         .as_ref()
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
         .iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
         .map(|(_, v)| {
             let save_file = Path::new(&handle.config().game_dir)
                 .join("mods")
                 .join(&v.file_name);
-            InstallTask {
-                url: v.url.to_owned().unwrap(),
-                sha1: Some(v.sha1.to_owned().unwrap()),
+            Ok(InstallTask {
+                url: v
+                    .url
+                    .to_owned()
+                    .ok_or_else(|| anyhow::anyhow!("url is none"))?,
+                sha1: Some(
+                    v.sha1
+                        .to_owned()
+                        .ok_or_else(|| anyhow::anyhow!("sha1 is none"))?,
+                ),
                 message: format!("mod {:?} installed", &save_file),
                 save_file,
-            }
+            })
         })
         .collect()
 }
 
 pub fn install() -> Result<()> {
-    // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
         return Ok(());
@@ -138,20 +144,18 @@ pub fn install() -> Result<()> {
             .locked_config()
             .mods
             .to_owned()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
             .into_iter()
             .filter(|(name, _)| {
                 config_handler
                     .config()
                     .mods
                     .as_ref()
-                    .unwrap()
-                    .iter()
-                    .any(|(x, _)| x == name)
+                    .is_some_and(|mods| mods.iter().any(|(x, _)| x == name))
             })
             .collect(),
     );
-    let tasks = mod_installtasks(&config_handler);
+    let tasks = mod_installtasks(&config_handler)?;
     TaskPool::from(tasks).install();
     Ok(())
 }
@@ -254,33 +258,47 @@ async fn sync_or_update(sync: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn clean() -> Result<()> {
-    let origin = ConfigHandler::read()?;
-    let mut handle = origin.clone();
-    if let Some(x) = origin.locked_config().mods.as_ref().map(|x| {
-        x.iter().filter(|(locked_mod_name, _)| {
-            let mods = origin.config().mods.as_ref();
-            !(mods.is_some()
-                && mods
-                    .map(|x| x.iter().any(|(name, _)| &name == locked_mod_name))
-                    .unwrap())
-        })
-    }) {
+fn clean_locked_config_mods() -> Result<()> {
+    let origin_handle = ConfigHandler::read()?;
+    let mut handle = origin_handle.clone();
+    let mods = origin_handle
+        .config()
+        .mods
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.toml"))?;
+    let need_clean_locked_mods = origin_handle
+        .locked_config()
+        .mods
+        .as_ref()
+        .map(|locked_mods| {
+            locked_mods.iter().filter(|(locked_mod_name, _)| {
+                let has_in_config = mods.iter().any(|(name, _)| &name == locked_mod_name);
+                !has_in_config
+            })
+        });
+    if let Some(x) = need_clean_locked_mods {
         x.to_owned()
-            .for_each(|(name, _)| handle.locked_config_mut().remove_mod(name).unwrap());
+            .try_for_each(|(name, _)| handle.locked_config_mut().remove_mod(name))?;
     }
+    Ok(())
+}
+
+fn clean_file_mods() -> Result<()> {
+    let handle = ConfigHandler::read()?;
     let mods_dir = Path::new(&handle.config().game_dir).join("mods");
-    for entry in WalkDir::new(mods_dir).into_iter().filter(|x| {
-        x.as_ref()
-            .unwrap()
-            .file_name()
-            .to_str()
-            .unwrap()
-            .ends_with(".unuse")
-    }) {
+    let mut unuse_mods_entry = WalkDir::new(mods_dir)
+        .into_iter()
+        .filter_entry(|entry| entry.file_name().to_string_lossy().ends_with(".unuse"));
+    unuse_mods_entry.try_for_each(|entry| {
         let file_path = entry?.path().to_owned();
-        fs::remove_file(file_path)?;
-    }
+        fs::remove_file(file_path)
+    })?;
+    Ok(())
+}
+
+pub fn clean() -> Result<()> {
+    clean_locked_config_mods()?;
+    clean_file_mods()?;
     println!("mods cleaned");
     Ok(())
 }
