@@ -10,7 +10,13 @@ pub fn gameruntime(handle: ConfigHandler) -> anyhow::Result<()> {
         .stdout(Stdio::piped())
         .spawn()?;
 
-    io::copy(&mut child.stdout.take().unwrap(), &mut io::stdout())?;
+    io::copy(
+        &mut child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?,
+        &mut io::stdout(),
+    )?;
     child.wait()?;
     Ok(())
 }
