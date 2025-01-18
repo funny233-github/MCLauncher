@@ -3,7 +3,7 @@ use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
 macro_rules! fetch {
     ($client:ident,$url:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch fail"));
+        let mut res = Err(anyhow::anyhow!("fetch {} fail", $url));
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
@@ -11,6 +11,7 @@ macro_rules! fetch {
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
                 )
+                .timeout(std::time::Duration::from_secs(100))
                 .send();
             let data = send.and_then(|x| x.$type());
             if let Ok(_data) = data {
@@ -23,7 +24,7 @@ macro_rules! fetch {
         res
     }};
     ($client:ident,$url:ident,$sha1:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch fail"));
+        let mut res = Err(anyhow::anyhow!("fetch {} fail", $url));
         for _ in 0..5 {
             let send = $client
                 .get(&$url)
@@ -31,6 +32,7 @@ macro_rules! fetch {
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
                 )
+                .timeout(std::time::Duration::from_secs(100))
                 .send();
             let data = send.and_then(|x| x.$type());
             if let Ok(_data) = data {

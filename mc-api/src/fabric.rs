@@ -16,11 +16,11 @@ impl Game {
     /// # Examples
     /// ```
     /// use mc_api::fabric::Game;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let _ = Game::fetch(mirror).unwrap();
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
-        let url = mirror.to_owned() + "/v2/versions/game";
+        let url = mirror.to_owned() + "v2/versions/game";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
@@ -43,11 +43,11 @@ impl Yarn {
     /// # Examples
     /// ```
     /// use mc_api::fabric::Yarn;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let _ = Yarn::fetch(mirror).unwrap();
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
-        let url = mirror.to_owned() + "/v2/versions/yarn";
+        let url = mirror.to_owned() + "v2/versions/yarn";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
@@ -68,11 +68,11 @@ impl Loader {
     /// # Examples
     /// ```
     /// use mc_api::fabric::Loader;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let _ = Loader::fetch(mirror).unwrap();
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
-        let url = mirror.to_owned() + "/v2/versions/loader";
+        let url = mirror.to_owned() + "v2/versions/loader";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
@@ -91,11 +91,11 @@ impl Intermediary {
     /// # Examples
     /// ```
     /// use mc_api::fabric::Intermediary;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let _ = Intermediary::fetch(mirror).unwrap();
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
-        let url = mirror.to_owned() + "/v2/versions/intermediary";
+        let url = mirror.to_owned() + "v2/versions/intermediary";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
@@ -130,11 +130,11 @@ impl Versions {
     /// # Examples
     /// ```
     /// use mc_api::fabric::Versions;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let _ = Versions::fetch(mirror).unwrap();
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
-        let url = mirror.to_owned() + "/v2/versions";
+        let url = mirror.to_owned() + "v2/versions";
         let client = reqwest::blocking::Client::new();
         fetch!(client, url, json)
     }
@@ -224,7 +224,7 @@ impl Profile {
     /// ```
     /// use mc_api::fabric::Profile;
     /// use std::borrow::Cow;
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta";
+    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
     /// let game_version = Cow::from("1.20.6-rc1");
     /// let loader_version = Cow::from("0.15.10");
     /// let _ = Profile::fetch(mirror, game_version, loader_version).unwrap();
@@ -235,7 +235,7 @@ impl Profile {
         loader_version: Cow<str>,
     ) -> anyhow::Result<Self> {
         let url = mirror.to_owned()
-            + "/v2/versions/loader/"
+            + "v2/versions/loader/"
             + game_version.replace(' ', "%20").as_ref()
             + "/"
             + loader_version.replace(' ', "%20").as_ref()
