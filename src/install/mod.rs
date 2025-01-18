@@ -23,14 +23,16 @@ const OS: &str = "linux";
 const OS: &str = "osx";
 
 trait DomainReplacer<T> {
-    fn replace_domain(&self, domain: &str) -> T;
+    fn replace_domain(&self, domain: &str) -> anyhow::Result<T>;
 }
 
 impl DomainReplacer<String> for String {
-    fn replace_domain(&self, domain: &str) -> String {
-        let regex = Regex::new(r"(?<replace>https://\S+?/)").unwrap();
-        let replace = regex.captures(self.as_str()).unwrap();
-        self.replace(&replace["replace"], domain)
+    fn replace_domain(&self, domain: &str) -> anyhow::Result<String> {
+        let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
+        let replace = regex
+            .captures(self.as_str())
+            .ok_or_else(|| anyhow::anyhow!("Cant' find the replace string"))?;
+        Ok(self.replace(&replace["replace"], domain))
     }
 }
 
@@ -103,7 +105,7 @@ fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Re
     println!("fetching assets/libraries/natives...");
     let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
     assets.install(&asset_index_file);
-    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets);
+    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets)?;
     tasks.append(&mut libraries_installtask(
         &config.game_dir,
         &config.mirror.libraries,
@@ -123,7 +125,7 @@ fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Re
     )?);
     TaskPool::from(tasks).install();
     println!("extracting natives ...");
-    native_extract(&config.game_dir, version);
+    native_extract(&config.game_dir, version)?;
     Ok(())
 }
 
@@ -134,7 +136,7 @@ fn libraries_installtask(
     version_json: &Version,
 ) -> anyhow::Result<VecDeque<InstallTask>> {
     let libraries = &version_json.libraries;
-    Ok(libraries
+    libraries
         .iter()
         .filter(|obj| obj.is_target_lib())
         .map(|x| {
@@ -146,14 +148,19 @@ fn libraries_installtask(
                 libraries_mirror
             };
             let save_file = Path::new(game_dir).join("libraries").join(path);
-            InstallTask {
+            Ok(InstallTask {
                 url: mirror.to_owned() + path,
                 sha1: x.downloads.artifact.sha1.clone(),
-                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                message: format!(
+                    "library {:?} installed",
+                    save_file
+                        .file_name()
+                        .ok_or_else(|| anyhow::anyhow!("take file name failed"))?
+                ),
                 save_file,
-            }
+            })
         })
-        .collect())
+        .collect()
 }
 
 #[test]
@@ -175,22 +182,40 @@ fn native_installtask(
     version_json: &Version,
 ) -> anyhow::Result<VecDeque<InstallTask>> {
     let libraries = &version_json.libraries;
-    Ok(libraries
+    libraries
         .iter()
         .filter(|obj| obj.is_target_native())
         .map(|x| {
-            let key = x.natives.as_ref().unwrap().get(OS).unwrap();
-            let artifact: &Artifact = x.downloads.classifiers.as_ref().unwrap().get(key).unwrap();
+            let key = x
+                .natives
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("take natives failed"))?
+                .get(OS)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("take {OS} natives failed, there is no natives for this os")
+                })?;
+            let artifact: &Artifact = x
+                .downloads
+                .classifiers
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("take classifiers failed"))?
+                .get(key)
+                .ok_or_else(|| anyhow::anyhow!("take {key} natives failed"))?;
             let path = &artifact.path;
             let save_file = Path::new(game_dir).join("libraries").join(path);
-            InstallTask {
+            Ok(InstallTask {
                 url: mirror.to_owned() + path,
                 sha1: artifact.sha1.clone(),
-                message: format!("library {:?} installed", save_file.file_name().unwrap()),
+                message: format!(
+                    "library {:?} installed",
+                    save_file
+                        .file_name()
+                        .ok_or_else(|| anyhow::anyhow!("take file name failed"))?
+                ),
                 save_file,
-            }
+            })
         })
-        .collect())
+        .collect()
 }
 
 #[test]
@@ -204,38 +229,51 @@ fn test_native_installtask() {
     assert!(!tasks.is_empty());
 }
 
-fn native_extract(game_dir: &str, version_json: &Version) {
+fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> {
     let libraries = &version_json.libraries;
-    for lib in libraries {
-        if lib.is_target_native() {
-            let key = lib.natives.as_ref().unwrap().get(OS).unwrap();
+    libraries
+        .iter()
+        .filter(|lib| lib.is_target_native())
+        .map(|lib| {
+            let key = lib
+                .natives
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("take natives failed"))?
+                .get(OS)
+                .ok_or_else(|| anyhow::anyhow!("take {OS} natives failed"))?;
             let artifact: &Artifact = lib
                 .downloads
                 .classifiers
                 .as_ref()
-                .unwrap()
+                .ok_or_else(|| anyhow::anyhow!("take classifiers failed"))?
                 .get(key)
-                .unwrap();
+                .ok_or_else(|| anyhow::anyhow!("take {key} natives failed"))?;
             let file_path = Path::new(game_dir).join("libraries").join(&artifact.path);
-            extract(game_dir, file_path);
-        }
-    }
+            extract(game_dir, file_path)?;
+            Ok(())
+        })
+        .collect()
 }
 
-fn extract(game_dir: &str, path: PathBuf) {
-    let jar_file = fs::File::open(path).unwrap();
-    let mut zip = ZipArchive::new(jar_file).unwrap();
-    let regex = Regex::new(r"\S+.so$").unwrap();
+fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
+    let jar_file = fs::File::open(path)?;
+    let mut zip = ZipArchive::new(jar_file)?;
+    let regex = Regex::new(r"\S+.so$")?;
     for i in 0..zip.len() {
-        let mut entry = zip.by_index(i).unwrap();
+        let mut entry = zip.by_index(i)?;
         if !entry.is_dir() && regex.captures(entry.name()).is_some() {
             let file_path = format!("{}natives/{}", game_dir, entry.name());
             let file_path = Path::new(&file_path);
-            fs::create_dir_all(file_path.parent().unwrap()).unwrap();
-            let mut output = fs::File::create(file_path).unwrap();
-            std::io::copy(&mut entry, &mut output).unwrap();
+            fs::create_dir_all(
+                file_path
+                    .parent()
+                    .ok_or_else(|| anyhow::anyhow!("take parent failed"))?,
+            )?;
+            let mut output = fs::File::create(file_path)?;
+            std::io::copy(&mut entry, &mut output)?;
         }
     }
+    Ok(())
 }
 
 fn client_installtask(
@@ -248,10 +286,14 @@ fn client_installtask(
     Ok(InstallTask {
         url: json_client["url"]
             .as_str()
-            .unwrap()
-            .to_string()
-            .replace_domain(client_mirror),
-        sha1: Some(json_client["sha1"].as_str().unwrap().to_string()),
+            .and_then(|str| Some(str.to_string().replace_domain(client_mirror)))
+            .ok_or_else(|| anyhow::anyhow!("take url failed"))??,
+        sha1: Some(
+            json_client["sha1"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("take sha1 failed"))?
+                .to_string(),
+        ),
         save_file: Path::new(game_dir)
             .join("versions")
             .join(game_version)
@@ -276,23 +318,27 @@ fn assets_installtask(
     game_dir: &str,
     assets_mirror: &str,
     asset_json: &Assets,
-) -> VecDeque<InstallTask> {
+) -> anyhow::Result<VecDeque<InstallTask>> {
     asset_json
         .objects
         .clone()
         .into_iter()
         .map(|x| {
             let sha1 = Some(x.1.hash.clone());
-            InstallTask {
+            Ok(InstallTask {
                 url: assets_mirror.to_owned() + &x.1.hash[0..2] + "/" + &x.1.hash,
                 save_file: Path::new(game_dir)
                     .join("assets")
                     .join("objects")
                     .join(&x.1.hash[0..2])
                     .join(x.1.hash.clone()),
-                message: format!("Asset {} installed", sha1.as_ref().unwrap()),
+                message: format!(
+                    "Asset {} installed",
+                    sha1.as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("take sha1 failed"))?
+                ),
                 sha1,
-            }
+            })
         })
         .collect()
 }
@@ -306,5 +352,5 @@ fn test_assets_installtask() {
     let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
     let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
     let task = assets_installtask(game_dir, assets_mirror, &assets_json);
-    assert!(!task.is_empty());
+    assert!(!task.unwrap().is_empty());
 }
