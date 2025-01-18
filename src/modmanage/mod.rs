@@ -168,16 +168,15 @@ pub fn sync(config_only: bool) -> Result<()> {
     Ok(())
 }
 
-fn progress_bar(len: usize) -> ProgressBar {
+fn progress_bar(len: usize) -> Result<ProgressBar> {
     let bar = ProgressBar::new(len as u64);
     bar.set_style(
         ProgressStyle::with_template(
             "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-        )
-        .unwrap()
+        )?
         .progress_chars("##-"),
     );
-    bar
+    Ok(bar)
 }
 
 async fn sync_or_update_handle(
@@ -185,7 +184,7 @@ async fn sync_or_update_handle(
     origin_config_share: Arc<RuntimeConfig>,
     handle_share: Arc<RwLock<ConfigHandler>>,
     bar_share: ProgressBar,
-) {
+) -> Result<()> {
     if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
         if sync
             && mods.iter().any(|(mod_name, locked_conf)| {
@@ -194,7 +193,7 @@ async fn sync_or_update_handle(
         {
             bar_share.inc(1);
             bar_share.set_message(format!("Mod {} synced", name));
-            return;
+            return Ok(());
         }
     }
 
@@ -202,8 +201,7 @@ async fn sync_or_update_handle(
         let version = {
             let ver = if sync { Some(ver) } else { None };
             fetch_version(&name, &ver, &origin_config_share)
-                .await
-                .unwrap()
+                .await?
                 .remove(0)
         };
         handle_share
@@ -227,6 +225,7 @@ async fn sync_or_update_handle(
             .add_mod_local(&file_name)
             .unwrap();
     }
+    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -235,7 +234,7 @@ async fn sync_or_update(sync: bool) -> Result<()> {
     if let Some(mods) = config_handler.config().mods.to_owned() {
         let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
-        let bar = progress_bar(mods.len());
+        let bar = progress_bar(mods.len())?;
         let tasks = mods.into_iter().map(|(name, conf)| {
             sync_or_update_handle(
                 (name, conf, sync),
