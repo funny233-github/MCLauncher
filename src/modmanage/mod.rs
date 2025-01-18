@@ -261,22 +261,23 @@ async fn sync_or_update(sync: bool) -> Result<()> {
 fn clean_locked_config_mods() -> Result<()> {
     let origin_handle = ConfigHandler::read()?;
     let mut handle = origin_handle.clone();
-    let mods = origin_handle
-        .config()
-        .mods
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.toml"))?;
-    let need_clean_locked_mods = origin_handle
+    let mods = origin_handle.config().mods.as_ref();
+    let unuse_locked_mods = origin_handle
         .locked_config()
         .mods
         .as_ref()
         .map(|locked_mods| {
             locked_mods.iter().filter(|(locked_mod_name, _)| {
-                let has_in_config = mods.iter().any(|(name, _)| &name == locked_mod_name);
-                !has_in_config
+                if let Some(mods) = mods {
+                    let has_in_config = mods.iter().any(|(name, _)| &name == locked_mod_name);
+                    !has_in_config
+                } else {
+                    true
+                }
             })
         });
-    if let Some(x) = need_clean_locked_mods {
+
+    if let Some(x) = unuse_locked_mods {
         x.to_owned()
             .try_for_each(|(name, _)| handle.locked_config_mut().remove_mod(name))?;
     }
@@ -286,13 +287,25 @@ fn clean_locked_config_mods() -> Result<()> {
 fn clean_file_mods() -> Result<()> {
     let handle = ConfigHandler::read()?;
     let mods_dir = Path::new(&handle.config().game_dir).join("mods");
-    let mut unuse_mods_entry = WalkDir::new(mods_dir)
+    WalkDir::new(mods_dir)
         .into_iter()
-        .filter_entry(|entry| entry.file_name().to_string_lossy().ends_with(".unuse"));
-    unuse_mods_entry.try_for_each(|entry| {
-        let file_path = entry?.path().to_owned();
-        fs::remove_file(file_path)
-    })?;
+        .filter_entry(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .unwrap()
+                .to_string()
+                .ends_with(".unuse")
+                || entry.path().is_dir()
+        })
+        .try_for_each(|entry| {
+            let file_path = entry?.path().to_owned();
+            if !file_path.is_dir() {
+                fs::remove_file(file_path)
+            } else {
+                Ok(())
+            }
+        })?;
     Ok(())
 }
 
