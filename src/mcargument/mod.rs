@@ -115,7 +115,23 @@ impl ConfigHandler {
         let mut paths: Vec<String> = version_api
             .libraries
             .iter()
-            .filter(|x| x.is_target_lib())
+            .filter(|lib| {
+                let lib_name = lib.name.as_str().to_string();
+                let lib_name = lib_name.split(":").collect::<Vec<_>>();
+                let has_greater_version = version_api.libraries.iter().any(|lib_y| {
+                    let lib_y_name = lib_y.name.as_str().to_string();
+                    let lib_y_name = lib_y_name.split(":").collect::<Vec<_>>();
+
+                    let is_same_lib = lib_name[0] == lib_y_name[0] && lib_name[1] == lib_y_name[1];
+
+                    let lib_version = version_compare::Version::from(lib_name[2]).unwrap();
+                    let lib_y_version = version_compare::Version::from(lib_y_name[2]).unwrap();
+
+                    is_same_lib && lib_version < lib_y_version
+                });
+
+                lib.is_target_lib() && !has_greater_version
+            })
             .map(|x| {
                 Path::new(&self.config().game_dir)
                     .join("libraries")

@@ -64,10 +64,10 @@ impl Library {
     /// ```
     pub fn is_target_lib(&self) -> bool {
         if let Some(rule) = &self.rules {
-            let flag = rule
+            let is_for_current_os = rule
                 .iter()
                 .find(|x| x.os.is_none() || x.os.as_ref().map(|x| x["name"] == OS).unwrap());
-            self.downloads.classifiers.is_none() && flag.is_some()
+            self.downloads.classifiers.is_none() && is_for_current_os.is_some()
         } else {
             self.downloads.classifiers.is_none()
         }
