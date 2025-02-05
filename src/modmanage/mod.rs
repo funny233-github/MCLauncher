@@ -105,30 +105,36 @@ pub fn update(config_only: bool) -> Result<()> {
     Ok(())
 }
 
-fn mod_installtasks(handle: &ConfigHandler) -> VecDeque<InstallTask> {
+fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
     handle
         .locked_config()
         .mods
         .as_ref()
-        .unwrap()
+        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
         .iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
         .map(|(_, v)| {
             let save_file = Path::new(&handle.config().game_dir)
                 .join("mods")
                 .join(&v.file_name);
-            InstallTask {
-                url: v.url.to_owned().unwrap(),
-                sha1: Some(v.sha1.to_owned().unwrap()),
+            Ok(InstallTask {
+                url: v
+                    .url
+                    .to_owned()
+                    .ok_or_else(|| anyhow::anyhow!("url is none"))?,
+                sha1: Some(
+                    v.sha1
+                        .to_owned()
+                        .ok_or_else(|| anyhow::anyhow!("sha1 is none"))?,
+                ),
                 message: format!("mod {:?} installed", &save_file),
                 save_file,
-            }
+            })
         })
         .collect()
 }
 
 pub fn install() -> Result<()> {
-    // Panic while mods is none which in config.lock and config.toml
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
         return Ok(());
@@ -138,20 +144,18 @@ pub fn install() -> Result<()> {
             .locked_config()
             .mods
             .to_owned()
-            .unwrap()
+            .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
             .into_iter()
             .filter(|(name, _)| {
                 config_handler
                     .config()
                     .mods
                     .as_ref()
-                    .unwrap()
-                    .iter()
-                    .any(|(x, _)| x == name)
+                    .is_some_and(|mods| mods.iter().any(|(x, _)| x == name))
             })
             .collect(),
     );
-    let tasks = mod_installtasks(&config_handler);
+    let tasks = mod_installtasks(&config_handler)?;
     TaskPool::from(tasks).install();
     Ok(())
 }
@@ -164,16 +168,15 @@ pub fn sync(config_only: bool) -> Result<()> {
     Ok(())
 }
 
-fn progress_bar(len: usize) -> ProgressBar {
+fn progress_bar(len: usize) -> Result<ProgressBar> {
     let bar = ProgressBar::new(len as u64);
     bar.set_style(
         ProgressStyle::with_template(
             "[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}",
-        )
-        .unwrap()
+        )?
         .progress_chars("##-"),
     );
-    bar
+    Ok(bar)
 }
 
 async fn sync_or_update_handle(
@@ -181,7 +184,7 @@ async fn sync_or_update_handle(
     origin_config_share: Arc<RuntimeConfig>,
     handle_share: Arc<RwLock<ConfigHandler>>,
     bar_share: ProgressBar,
-) {
+) -> Result<()> {
     if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
         if sync
             && mods.iter().any(|(mod_name, locked_conf)| {
@@ -190,7 +193,7 @@ async fn sync_or_update_handle(
         {
             bar_share.inc(1);
             bar_share.set_message(format!("Mod {} synced", name));
-            return;
+            return Ok(());
         }
     }
 
@@ -198,8 +201,7 @@ async fn sync_or_update_handle(
         let version = {
             let ver = if sync { Some(ver) } else { None };
             fetch_version(&name, &ver, &origin_config_share)
-                .await
-                .unwrap()
+                .await?
                 .remove(0)
         };
         handle_share
@@ -223,6 +225,7 @@ async fn sync_or_update_handle(
             .add_mod_local(&file_name)
             .unwrap();
     }
+    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -231,7 +234,7 @@ async fn sync_or_update(sync: bool) -> Result<()> {
     if let Some(mods) = config_handler.config().mods.to_owned() {
         let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
-        let bar = progress_bar(mods.len());
+        let bar = progress_bar(mods.len())?;
         let tasks = mods.into_iter().map(|(name, conf)| {
             sync_or_update_handle(
                 (name, conf, sync),
@@ -254,33 +257,60 @@ async fn sync_or_update(sync: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn clean() -> Result<()> {
-    let origin = ConfigHandler::read()?;
-    let mut handle = origin.clone();
-    if let Some(x) = origin.locked_config().mods.as_ref().map(|x| {
-        x.iter().filter(|(locked_mod_name, _)| {
-            let mods = origin.config().mods.as_ref();
-            !(mods.is_some()
-                && mods
-                    .map(|x| x.iter().any(|(name, _)| &name == locked_mod_name))
-                    .unwrap())
-        })
-    }) {
+fn clean_locked_config_mods() -> Result<()> {
+    let origin_handle = ConfigHandler::read()?;
+    let mut handle = origin_handle.clone();
+    let mods = origin_handle.config().mods.as_ref();
+    let unuse_locked_mods = origin_handle
+        .locked_config()
+        .mods
+        .as_ref()
+        .map(|locked_mods| {
+            locked_mods.iter().filter(|(locked_mod_name, _)| {
+                if let Some(mods) = mods {
+                    let has_in_config = mods.iter().any(|(name, _)| &name == locked_mod_name);
+                    !has_in_config
+                } else {
+                    true
+                }
+            })
+        });
+
+    if let Some(x) = unuse_locked_mods {
         x.to_owned()
-            .for_each(|(name, _)| handle.locked_config_mut().remove_mod(name).unwrap());
+            .try_for_each(|(name, _)| handle.locked_config_mut().remove_mod(name))?;
     }
+    Ok(())
+}
+
+fn clean_file_mods() -> Result<()> {
+    let handle = ConfigHandler::read()?;
     let mods_dir = Path::new(&handle.config().game_dir).join("mods");
-    for entry in WalkDir::new(mods_dir).into_iter().filter(|x| {
-        x.as_ref()
-            .unwrap()
-            .file_name()
-            .to_str()
-            .unwrap()
-            .ends_with(".unuse")
-    }) {
-        let file_path = entry?.path().to_owned();
-        fs::remove_file(file_path)?;
-    }
+    WalkDir::new(mods_dir)
+        .into_iter()
+        .filter_entry(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .unwrap()
+                .to_string()
+                .ends_with(".unuse")
+                || entry.path().is_dir()
+        })
+        .try_for_each(|entry| {
+            let file_path = entry?.path().to_owned();
+            if !file_path.is_dir() {
+                fs::remove_file(file_path)
+            } else {
+                Ok(())
+            }
+        })?;
+    Ok(())
+}
+
+pub fn clean() -> Result<()> {
+    clean_locked_config_mods()?;
+    clean_file_mods()?;
     println!("mods cleaned");
     Ok(())
 }

@@ -399,29 +399,25 @@ impl ConfigHandler {
     pub fn has_mod_name(&self, mod_name: &str) -> bool {
         self.config()
             .mods
-            .clone()
-            .map_or(false, |mods| mods.iter().any(|(name, _)| name == mod_name))
+            .clone().is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
     pub fn has_locked_mod_name(&self, mod_name: &str) -> bool {
         self.locked_config()
             .mods
-            .clone()
-            .map_or(false, |mods| mods.iter().any(|(name, _)| name == mod_name))
+            .clone().is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
     pub fn has_mod_config(&self, mod_conf: &ModConfig) -> bool {
         self.config()
             .mods
-            .clone()
-            .map_or(false, |mods| mods.iter().any(|(_, conf)| conf == mod_conf))
+            .clone().is_some_and(|mods| mods.iter().any(|(_, conf)| conf == mod_conf))
     }
 
     pub fn has_locked_mod_config(&self, mod_conf: &LockedModConfig) -> bool {
         self.locked_config()
             .mods
-            .clone()
-            .map_or(false, |mods| mods.iter().any(|(_, conf)| conf == mod_conf))
+            .clone().is_some_and(|mods| mods.iter().any(|(_, conf)| conf == mod_conf))
     }
 
     /// Read config.toml and config.lock

@@ -1,7 +1,7 @@
-workspace = { members = [ "installer", "mc-api", "modrinth-api"] }
+workspace = { members = ["installer", "mc-api", "modrinth-api"] }
 [package]
 name = "launcher"
-version = "0.2.6"
+version = "0.2.7"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,22 +16,23 @@ hex = "0.4.3"
 indicatif = "0.17.8"
 log = "0.4.21"
 regex = "1.10.4"
-reqwest = { version = "0.12.3", features = ["blocking","json"] }
+reqwest = { version = "0.12.3", features = ["blocking", "json"] }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 sha1 = "0.10.6"
 sha256 = "1.5.0"
 tokio = { version = "1.37.0", features = ["full"] }
 toml = "0.8.12"
+version-compare = "0.2.0"
 walkdir = "2.5.0"
 zip = "2.1.0"
 
 [dependencies.uuid]
 version = "1.6.1"
 features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+  "v4",                # Lets you generate random UUIDs
+  "fast-rng",          # Use a faster (but still sufficiently random) RNG
+  "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]
 
 [dependencies.mc-api]

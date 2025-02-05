@@ -49,7 +49,7 @@ impl Versions {
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
                 )
-                .timeout(Duration::from_secs(10));
+                .timeout(Duration::from_secs(100));
             let send = if let Ok(_send) = init.send() {
                 _send
             } else {
@@ -78,7 +78,7 @@ impl Versions {
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
                 )
-                .timeout(Duration::from_secs(10));
+                .timeout(Duration::from_secs(100));
             let send = if let Ok(_send) = init.send().await {
                 _send
             } else {
