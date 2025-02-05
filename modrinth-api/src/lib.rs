@@ -181,4 +181,48 @@ impl Projects {
             &err_detail
         ))
     }
+
+    pub async fn fetch(query: &str, limit: Option<usize>) -> Result<Projects> {
+        let client = reqwest::Client::new();
+        let mut err_detail = None;
+        if limit.is_some_and(|lim| lim > 100) {
+            return Err(anyhow::anyhow!(
+                "limit must < 100, the limit is {:?}",
+                limit
+            ));
+        }
+        for _ in 0..5 {
+            let init = client
+                .get(format!(
+                    "https://api.modrinth.com/v2/search?query={}&limit={}",
+                    query,
+                    limit.unwrap_or(10)
+                ))
+                .header(
+                    reqwest::header::USER_AGENT,
+                    "github.com/funny233-github/MCLauncher",
+                )
+                .timeout(Duration::from_secs(100));
+
+            let send = if let Ok(_send) = init.send().await {
+                _send
+            } else {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                continue;
+            };
+
+            match send.json().await {
+                Ok(_json) => return Ok(_json),
+                Err(e) => {
+                    err_detail = Some(e);
+                    continue;
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "modrinth Projects fetch timeout!\ndetail:{:#?}",
+            &err_detail
+        ))
+    }
 }
