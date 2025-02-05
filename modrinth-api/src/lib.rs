@@ -72,6 +72,17 @@ impl Versions {
         ))
     }
 
+    /// Fetches the list of verseions for a project with the given slug
+    /// # Examples
+    /// ```
+    /// use modrinth_api::Versions;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let versions = Versions::fetch("fabric-api").await.unwrap();
+    ///     assert!(versions.len() > 0);
+    /// }
+    /// ```
     pub async fn fetch(slug: &str) -> Result<Vec<Version>> {
         let client = reqwest::Client::new();
         let mut err_detail = None;
@@ -182,6 +193,17 @@ impl Projects {
         ))
     }
 
+    /// Fetches the list of Projects for a project with the given slug and limit.
+    /// # Examples
+    /// ```
+    /// use modrinth_api::Projects;
+    ///
+    /// #[tokio::main]
+    /// async fn main() {
+    ///     let projects = Projects::fetch("fabric-api", Some(10)).await.unwrap();
+    ///     assert!(projects.hits.len() > 0);
+    /// }
+    /// ```
     pub async fn fetch(query: &str, limit: Option<usize>) -> Result<Projects> {
         let client = reqwest::Client::new();
         let mut err_detail = None;
