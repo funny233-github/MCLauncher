@@ -26,6 +26,16 @@ pub struct Version {
     pub files: Vec<VersionFile>,
 }
 
+impl Version {
+    pub fn is_support_game_version(&self, game_version: &str) -> bool {
+        self.game_versions.iter().any(|v| v == game_version)
+    }
+
+    pub fn is_supoprt_loader(&self, game_loader: &str) -> bool {
+        self.loaders.iter().any(|l| l == game_loader)
+    }
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Versions {}
 
@@ -122,7 +132,11 @@ impl Versions {
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Hit {
     pub project_id: String,
+    pub project_type: String,
+    pub slug: String,
     pub author: String,
+    pub title: String,
+    pub description: String,
     pub display_categories: Option<Vec<String>>,
     pub versions: Vec<String>,
     pub follows: i32,
@@ -131,6 +145,18 @@ pub struct Hit {
     pub license: String,
     pub gallery: Option<Vec<String>>,
     pub featured_gallery: Option<String>,
+}
+
+impl Hit {
+    pub fn is_mod(&self) -> bool {
+        self.project_type == "mod"
+    }
+    pub fn name(&self) -> String {
+        self.slug.to_owned()
+    }
+    pub fn is_support_game_version(&self, version: &str) -> bool {
+        self.versions.iter().any(|_version| _version == version)
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

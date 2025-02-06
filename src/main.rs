@@ -90,6 +90,12 @@ enum ModManage {
         #[arg(long)]
         config_only: bool,
     },
+    Search {
+        name: String,
+
+        #[arg(long)]
+        limit: Option<usize>,
+    },
     Clean,
 }
 
@@ -136,7 +142,8 @@ fn handle_args() -> anyhow::Result<()> {
             } else {
                 handle.config_mut().loader = MCLoader::None;
             }
-            install_mc(handle.config())?;
+            drop(handle);
+            install_mc(ConfigHandler::read()?.config())?;
         }
         Command::Run => {
             let config = ConfigHandler::read()?;
@@ -161,6 +168,7 @@ fn handle_args() -> anyhow::Result<()> {
             ModManage::Update { config_only } => modmanage::update(config_only)?,
             ModManage::Install => modmanage::install()?,
             ModManage::Sync { config_only } => modmanage::sync(config_only)?,
+            ModManage::Search { name, limit } => modmanage::search(&name, limit)?,
             ModManage::Clean => modmanage::clean()?,
         },
     }

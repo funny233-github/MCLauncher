@@ -3,7 +3,7 @@ use anyhow::Result;
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use installer::{InstallTask, TaskPool};
-use modrinth_api::{Version, Versions};
+use modrinth_api::{Projects, Version, Versions};
 use std::{
     collections::VecDeque,
     fs,
@@ -312,5 +312,30 @@ pub fn clean() -> Result<()> {
     clean_locked_config_mods()?;
     clean_file_mods()?;
     println!("mods cleaned");
+    Ok(())
+}
+
+pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
+    let handle = ConfigHandler::read()?;
+    let loader = match handle.config().loader {
+        MCLoader::Fabric(_) => "fabric",
+        MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
+    };
+    let game_version = handle.config().game_version.as_ref();
+    let projects = Projects::fetch_blocking(name, limit).unwrap();
+    let res: Vec<_> = projects
+        .hits
+        .iter()
+        .filter(|hit| {
+            let project_slug = hit.slug.as_ref();
+            let project_version = Versions::fetch_blocking(project_slug).unwrap();
+            hit.is_mod()
+                && project_version
+                    .into_iter()
+                    .any(|v| v.is_supoprt_loader(loader) && v.is_support_game_version(game_version))
+        })
+        .map(|hit| (hit.slug.to_owned(), hit.description.to_owned()))
+        .collect();
+    println!("{:#?}", res);
     Ok(())
 }
