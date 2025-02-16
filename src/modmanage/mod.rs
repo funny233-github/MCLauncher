@@ -332,7 +332,7 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
             hit.is_mod()
                 && project_version
                     .into_iter()
-                    .any(|v| v.is_supoprt_loader(loader) && v.is_support_game_version(game_version))
+                    .any(|v| v.is_support_loader(loader) && v.is_support_game_version(game_version))
         })
         .map(|hit| (hit.slug.to_owned(), hit.description.to_owned()))
         .collect();

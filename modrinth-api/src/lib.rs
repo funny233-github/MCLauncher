@@ -31,7 +31,7 @@ impl Version {
         self.game_versions.iter().any(|v| v == game_version)
     }
 
-    pub fn is_supoprt_loader(&self, game_loader: &str) -> bool {
+    pub fn is_support_loader(&self, game_loader: &str) -> bool {
         self.loaders.iter().any(|l| l == game_loader)
     }
 }
