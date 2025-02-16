@@ -322,7 +322,7 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
     let game_version = handle.config().game_version.as_ref();
-    let projects = Projects::fetch_blocking(name, limit).unwrap();
+    let projects = Projects::fetch_blocking(name, limit)?;
     let res: Vec<_> = projects
         .hits
         .iter()
