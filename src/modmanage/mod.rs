@@ -10,6 +10,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use tabled::{settings::Style, Table, Tabled};
 use walkdir::WalkDir;
 
 pub async fn fetch_version(
@@ -315,14 +316,24 @@ pub fn clean() -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Tabled)]
+struct HitsInfo {
+    slug: String,
+    description: String,
+}
+
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
+
     let loader = match handle.config().loader {
         MCLoader::Fabric(_) => "fabric",
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
+
     let game_version = handle.config().game_version.as_ref();
+
     let projects = Projects::fetch_blocking(name, limit)?;
+
     let res: Vec<_> = projects
         .hits
         .iter()
@@ -334,8 +345,23 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
                     .into_iter()
                     .any(|v| v.is_support_loader(loader) && v.is_support_game_version(game_version))
         })
-        .map(|hit| (hit.slug.to_owned(), hit.description.to_owned()))
+        .map(|hit| HitsInfo {
+            slug: hit.slug.to_owned(),
+            description: hit.description.to_owned(),
+        })
         .collect();
-    println!("{:#?}", res);
+
+    match res.len() {
+        0 => println!("No match mods found!"),
+        1..=10 => {
+            let mut table = Table::new(res);
+            println!("{}", table.with(Style::modern()));
+        }
+        _ => {
+            let mut table = Table::new(res);
+            println!("{}", table.with(Style::modern()));
+            println!("use --limit N to see more");
+        }
+    }
     Ok(())
 }
