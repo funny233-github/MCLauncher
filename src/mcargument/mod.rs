@@ -1,4 +1,5 @@
 use crate::config::ConfigHandler;
+use anyhow::Result;
 use mc_api::official::Version;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -115,31 +116,55 @@ impl ConfigHandler {
         let mut paths: Vec<String> = version_api
             .libraries
             .iter()
-            .filter(|lib| {
+            .filter_map(|lib| {
                 let lib_name = lib.name.as_str().to_string();
                 let lib_name = lib_name.split(":").collect::<Vec<_>>();
-                let has_greater_version = version_api.libraries.iter().any(|lib_y| {
-                    let lib_y_name = lib_y.name.as_str().to_string();
-                    let lib_y_name = lib_y_name.split(":").collect::<Vec<_>>();
+                let has_greater_version: anyhow::Result<bool> =
+                    version_api.libraries.iter().try_fold(false, |res, lib_y| {
+                        let lib_y_name = lib_y.name.as_str().to_string();
+                        let lib_y_name: Vec<_> = lib_y_name.split(":").collect();
 
-                    let is_same_lib = lib_name[0] == lib_y_name[0] && lib_name[1] == lib_y_name[1];
+                        let is_same_lib =
+                            lib_name[0] == lib_y_name[0] && lib_name[1] == lib_y_name[1];
 
-                    let lib_version = version_compare::Version::from(lib_name[2]).unwrap();
-                    let lib_y_version = version_compare::Version::from(lib_y_name[2]).unwrap();
+                        let lib_version =
+                            version_compare::Version::from(lib_name[2]).ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "Invalid version format for library '{}': {}",
+                                    lib_name[1],
+                                    lib_name[2]
+                                )
+                            })?;
+                        let lib_y_version = version_compare::Version::from(lib_y_name[2])
+                            .ok_or_else(|| {
+                                anyhow::anyhow!(
+                                    "Invalid version format for library '{}': {}",
+                                    lib_y_name[1],
+                                    lib_y_name[2]
+                                )
+                            })?;
 
-                    is_same_lib && lib_version < lib_y_version
-                });
+                        Ok(res || (is_same_lib && lib_version < lib_y_version))
+                    });
 
-                lib.is_target_lib() && !has_greater_version
+                match has_greater_version {
+                    Ok(has_greater_version) => {
+                        if lib.is_target_lib() && !has_greater_version {
+                            let path = Path::new(&self.config().game_dir)
+                                .join("libraries")
+                                .join(&lib.downloads.artifact.path)
+                                .to_string_lossy()
+                                .to_string();
+
+                            Some(Ok(path))
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => Some(Err(e)),
+                }
             })
-            .map(|x| {
-                Path::new(&self.config().game_dir)
-                    .join("libraries")
-                    .join(&x.downloads.artifact.path)
-                    .to_string_lossy()
-                    .into()
-            })
-            .collect();
+            .collect::<Result<_>>()?;
 
         let client_path = Path::new(&self.config().game_dir)
             .join("versions")
