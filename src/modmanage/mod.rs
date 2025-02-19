@@ -334,22 +334,32 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
 
     let projects = Projects::fetch_blocking(name, limit)?;
 
-    let res: Vec<_> = projects
+    let res: Result<Vec<_>> = projects
         .hits
         .iter()
-        .filter(|hit| {
+        .filter_map(|hit| {
             let project_slug = hit.slug.as_ref();
-            let project_version = Versions::fetch_blocking(project_slug).unwrap();
-            hit.is_mod()
-                && project_version
-                    .into_iter()
-                    .any(|v| v.is_support_loader(loader) && v.is_support_game_version(game_version))
-        })
-        .map(|hit| HitsInfo {
-            slug: hit.slug.to_owned(),
-            description: hit.description.to_owned(),
+            let project_version = Versions::fetch_blocking(project_slug);
+            match project_version {
+                Ok(versions) => {
+                    let is_support_mod = hit.is_mod()
+                        && versions.into_iter().any(|v| {
+                            v.is_support_loader(loader) && v.is_support_game_version(game_version)
+                        });
+                    if is_support_mod {
+                        Some(Ok(HitsInfo {
+                            slug: hit.slug.to_owned(),
+                            description: hit.description.to_owned(),
+                        }))
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => Some(Err(e)),
+            }
         })
         .collect();
+    let res = res?;
 
     match res.len() {
         0 => println!("No match mods found!"),
