@@ -112,12 +112,20 @@ fn handle_args() -> anyhow::Result<()> {
                 ListSub::MC(_type) => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
                         .list(_type.into());
-                    println!("{:?}", list);
+                    let mut table = tabled::Table::from_iter(list.chunks(6));
+                    println!(
+                        "Available Minecraft versions :\n{}",
+                        table.with(tabled::settings::Style::modern())
+                    );
                 }
                 ListSub::Loader { loader: _loader } => {
                     let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
-                    let list: Vec<&str> = l.iter().map(|x| x.version.as_ref()).collect();
-                    println!("{:?}", list);
+                    let list: Vec<String> = l.iter().map(|x| x.version.to_owned()).collect();
+                    let mut table = tabled::Table::from_iter(list.chunks(6));
+                    println!(
+                        "Available fabric loader versions :\n{}",
+                        table.with(tabled::settings::Style::modern())
+                    );
                 }
             }
         }

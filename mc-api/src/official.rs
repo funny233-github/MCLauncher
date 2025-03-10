@@ -128,7 +128,7 @@ impl VersionManifest {
         fetch!(client, url, json)
     }
 
-    /// fetch version list fromm manifest
+    /// fetch version list from manifest
     /// # Examples
     /// ```
     /// use mc_api::official::VersionManifest;
