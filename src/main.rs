@@ -72,22 +72,25 @@ enum Mirrors {
 enum ModManage {
     Add {
         name: String,
+
         version: Option<String>,
+
         #[arg(long)]
         local: bool,
-        #[arg(long)]
+
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Remove {
         name: String,
     },
     Update {
-        #[arg(long)]
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Install,
     Sync {
-        #[arg(long)]
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Search {
@@ -186,6 +189,6 @@ fn handle_args() -> anyhow::Result<()> {
 fn main() {
     env_logger::init();
     if let Err(e) = handle_args() {
-        error!("{:#?}", e);
+        error!("Error occurred: {}\nCaused by: {:?}", e, e.source());
     }
 }
