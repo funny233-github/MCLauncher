@@ -23,8 +23,9 @@ ModManage
 
 To enhance manage with launcher, follow these steps:
 
-1. Make sure you are already selected and installed mod loader use `launcher install <version> --fabric <fabric_loader_version>` command.
-2. Find Mod name which you want from modrinth, the Mod name always in the end with url such as `https://modrinth.com/mod/fabric-api`, the `fabric-api` is Mod name.
+1. Ensure you have installed Fabric via:  
+   `launcher install <minecraft_version> --fabric <fabric_loader_version>`
+2. Find Mod name which you want from Modrinth, the Mod name always in the end with URL such as `https://modrinth.com/mod/fabric-api`, the `fabric-api` is Mod name.
 3. Add a Mod: Run `launcher mod add <mod_name>`.
 4. Remove a Mod: Run `launcher mod remove <mod_name>`
 5. Update All Mod which in `config.toml`: Run `launcher mod update`
@@ -51,9 +52,9 @@ Features
 Limitations
 ===========
 
-There are no known limitations or issues with this tool at this time. However, please note that this tool is still in beta and may not be suitable for all users. If you encounter any issues while using the launcher, please report them to our GitHub repository.
+There are no known limitations or issues with this tool at this time. However, please note that this tool is still in beta and may not be suitable for all users.
 
 Contributing
 ============
 
-We would love to have your help contributing to MCLauncher! Please report any issues or suggestions you have on our GitHub repository. If you're interested in helping out with development, we encourage you to join our Discord server and get involved with the community.!
+We would love to have your help contributing to MCLauncher! Please report any issues or suggestions you have on our GitHub repository.
