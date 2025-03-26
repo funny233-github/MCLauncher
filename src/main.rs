@@ -110,6 +110,27 @@ enum ModManage {
     Clean,
 }
 
+fn print_version_list(name: &str, versions: &[String], limit: usize) -> anyhow::Result<()> {
+    let count = versions.len();
+    let display_count = limit.min(count);
+    let mut table = tabled::Table::from_iter(
+        versions
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<String>>()
+            .chunks(6),
+    );
+    println!(
+        "Available {} versions ({}/{}):\n{}",
+        name,
+        display_count,
+        count,
+        table.with(tabled::settings::Style::modern())
+    );
+    Ok(())
+}
+
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.command {
@@ -126,19 +147,7 @@ fn handle_args() -> anyhow::Result<()> {
                 } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
                         .list(version_type.into());
-                    let len = list.len();
-                    let mut table = tabled::Table::from_iter(
-                        list.into_iter()
-                            .take(list_limit)
-                            .collect::<Vec<String>>()
-                            .chunks(6),
-                    );
-                    println!(
-                        "Available Minecraft versions ({}/{}):\n{}",
-                        list_limit,
-                        len,
-                        table.with(tabled::settings::Style::modern())
-                    );
+                    print_version_list("Minecraft", &list, list_limit)?;
                 }
                 ListSub::Loader {
                     loader: _loader,
@@ -146,14 +155,7 @@ fn handle_args() -> anyhow::Result<()> {
                 } => {
                     let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
                     let list: Vec<String> = l.iter().map(|x| x.version.to_owned()).collect();
-                    let len = list.len();
-                    let mut table = tabled::Table::from_iter(list.chunks(6));
-                    println!(
-                        "Available fabric loader versions ({}/{}) :\n{}",
-                        list_limit,
-                        len,
-                        table.with(tabled::settings::Style::modern())
-                    );
+                    print_version_list("fabric loader", &list, list_limit)?;
                 }
             }
         }
