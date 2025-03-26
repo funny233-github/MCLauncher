@@ -142,9 +142,10 @@ impl Default for RuntimeConfig {
             window_weight: 854,
             window_height: 480,
             game_dir: std::env::current_dir()
-                .unwrap()
+                .unwrap_or_else(|e| panic!("Failed to get current directory: {}", e))
                 .to_str()
-                .unwrap()
+                .ok_or_else(|| panic!("Path contains invalid UTF-8"))
+                .unwrap_or_else(|e| panic!("Failed to convert path to string: {:?}", e))
                 .to_owned()
                 + "/",
             game_version: "no_game_version".into(),
@@ -585,8 +586,17 @@ impl ConfigHandler {
     /// # Panic
     /// panic when can't found mod in config.lock
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
-        let file_path =
-            Path::new("mods").join(&self.locked_config.mods.as_ref().unwrap()[name].file_name);
+        let locked_mods = self
+            .locked_config
+            .mods
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No mods in locked config"))?;
+        let mod_info = locked_mods
+            .get(name)
+            .ok_or_else(|| anyhow::anyhow!("Mod '{}' not found in locked config", name))?;
+        let file_path = Path::new(&self.config().game_dir)
+            .join("mods")
+            .join(&mod_info.file_name);
         // the config independent with file of mod
         // so the file of mod may not exist
         if fs::metadata(&file_path).is_ok() {
@@ -605,32 +615,29 @@ impl ConfigHandler {
         if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
-        let file_names = self.config().mods.as_ref().map(|x| {
-            x.iter().map(|(name, _)| {
-                self.locked_config()
-                    .mods
-                    .as_ref()
-                    .map(|x| &x[name].file_name)
-            })
-        });
 
-        for entry in WalkDir::new(&mod_dir).into_iter().filter(|x| {
-            let name = x.as_ref().unwrap().file_name().to_str().unwrap();
-            name != "mods" && (!name.ends_with(".unuse"))
-        }) {
-            let name = &entry?.file_name().to_str().unwrap().to_owned();
+        // Collect all used mod file names
+        let used_files: Vec<String> = match (&self.config().mods, &self.locked_config().mods) {
+            (Some(config_mods), Some(locked_mods)) => config_mods
+                .keys()
+                .filter_map(|name| locked_mods.get(name).map(|m| m.file_name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
 
-            if !(file_names.is_some()
-                && file_names
-                    .as_ref()
-                    .unwrap()
-                    .to_owned()
-                    .any(|x| x.unwrap() == name))
-            {
-                let path = Path::new("mods").join(name);
-                let new_name = format!("{}.unuse", name);
-                let new_path = Path::new("mods").join(new_name);
-                fs::rename(path, new_path)?;
+        for entry in WalkDir::new(&mod_dir).into_iter().filter_map(|e| e.ok()) {
+            if let Some(name) = entry.file_name().to_str() {
+                // WalkDir returns the directory itself ("mods") as an entry, which we must filter out
+                // to avoid incorrectly processing the mods directory as a mod file
+                if name == "mods" || name.ends_with(".unuse") {
+                    continue;
+                }
+
+                if !used_files.contains(&name.to_string()) {
+                    let path = mod_dir.join(name);
+                    let new_path = mod_dir.join(format!("{}.unuse", name));
+                    fs::rename(path, new_path)?;
+                }
             }
         }
         Ok(())
@@ -642,38 +649,35 @@ impl ConfigHandler {
         if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
-        let file_names = self.config().mods.as_ref().map(|x| {
-            x.iter().map(|(name, _)| {
-                self.locked_config()
-                    .mods
-                    .as_ref()
-                    .map(|x| &x[name].file_name)
+
+        let used_files = match (&self.config().mods, &self.locked_config().mods) {
+            (Some(config_mods), Some(locked_mods)) => config_mods
+                .keys()
+                .filter_map(|name| locked_mods.get(name).map(|m| m.file_name.clone()))
+                .collect(),
+            _ => Vec::new(),
+        };
+
+        for entry in WalkDir::new(&mod_dir)
+            .into_iter()
+            .filter(|entry| match entry {
+                Ok(e) => e
+                    .file_name()
+                    .to_str()
+                    .unwrap_or_else(|| panic!("Failed to convert str to String"))
+                    .ends_with(".unuse"),
+                Err(e) => panic!("{}", e),
             })
-        });
-
-        for entry in WalkDir::new(&mod_dir).into_iter().filter(|x| {
-            x.as_ref()
-                .unwrap()
-                .file_name()
-                .to_str()
-                .unwrap()
-                .ends_with(".unuse")
-        }) {
-            let name = &entry?.file_name().to_str().unwrap().to_owned();
-
-            if file_names.is_some()
-                && file_names
-                    .as_ref()
-                    .unwrap()
-                    .to_owned()
-                    .any(|x| &format!("{}.unuse", x.unwrap()) == name)
-            {
-                let path = Path::new("mods").join(name);
-                let mut new_name = name.clone();
-                new_name.truncate(name.len() - 6);
-                let new_path = Path::new("mods").join(new_name);
-                fs::rename(path, new_path)?;
-            }
+        {
+            if let Some(name) = &entry?.file_name().to_str() {
+                if used_files.iter().any(|x| &format!("{}.unuse", x) == name) {
+                    let path = Path::new("mods").join(name);
+                    let mut new_name = name.to_string();
+                    new_name.truncate(name.len() - 6);
+                    let new_path = Path::new("mods").join(new_name);
+                    fs::rename(path, new_path)?;
+                }
+            };
         }
         Ok(())
     }
@@ -682,6 +686,8 @@ impl ConfigHandler {
 impl Drop for ConfigHandler {
     #[inline]
     fn drop(&mut self) {
-        self.write_with_mut().unwrap();
+        if let Err(e) = self.write_with_mut() {
+            panic!("Failed to write config on drop: {}", e);
+        }
     }
 }
