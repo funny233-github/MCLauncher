@@ -13,33 +13,42 @@ use std::{
 use tabled::{settings::Style, Table, Tabled};
 use walkdir::WalkDir;
 
+fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
+    version
+        .game_versions
+        .iter()
+        .any(|x| x == &config.game_version)
+        && version.loaders.iter().any(|x| match config.loader {
+            MCLoader::None => false,
+            MCLoader::Fabric(_) => x == "fabric",
+        })
+}
+
+fn filter_versions(
+    versions: Vec<Version>,
+    version: &Option<String>,
+    config: &RuntimeConfig,
+) -> Result<Vec<Version>> {
+    let res: Vec<Version> = versions
+        .into_iter()
+        .filter(|x| is_version_supported(x, config))
+        .filter(|x| version.as_ref().is_none_or(|v| &x.version_number == v))
+        .collect();
+
+    if res.is_empty() {
+        Err(anyhow::anyhow!("No matching versions found"))
+    } else {
+        Ok(res)
+    }
+}
+
 pub async fn fetch_version(
     name: &str,
     version: &Option<String>,
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch(name).await?;
-    let res: Vec<Version> = versions
-        .into_iter()
-        .filter(|x| {
-            x.game_versions.iter().any(|x| x == &config.game_version)
-                && x.loaders.iter().any(|x| match config.loader {
-                    MCLoader::None => false,
-                    MCLoader::Fabric(_) => x == "fabric",
-                })
-        })
-        .filter(|x| {
-            if let Some(v) = &version {
-                &x.version_number == v
-            } else {
-                true
-            }
-        })
-        .collect();
-    if res.is_empty() {
-        return Err(anyhow::anyhow!("Can't fetch {}", name));
-    };
-    Ok(res)
+    filter_versions(versions, version, config)
 }
 
 pub fn fetch_version_blocking(
@@ -48,27 +57,7 @@ pub fn fetch_version_blocking(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch_blocking(name)?;
-    let res: Vec<Version> = versions
-        .into_iter()
-        .filter(|x| {
-            x.game_versions.iter().any(|x| x == &config.game_version)
-                && x.loaders.iter().any(|x| match config.loader {
-                    MCLoader::None => false,
-                    MCLoader::Fabric(_) => x == "fabric",
-                })
-        })
-        .filter(|x| {
-            if let Some(v) = &version {
-                &x.version_number == v
-            } else {
-                true
-            }
-        })
-        .collect();
-    if res.is_empty() {
-        return Err(anyhow::anyhow!("Can't fetch {}", name));
-    }
-    Ok(res)
+    filter_versions(versions, version, config)
 }
 
 pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
@@ -107,14 +96,15 @@ pub fn update(config_only: bool) -> Result<()> {
 }
 
 fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
-    handle
+    let mods = handle
         .locked_config()
         .mods
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
-        .iter()
+        .ok_or_else(|| anyhow::anyhow!("No mods found in config.lock"))?;
+
+    mods.iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
-        .map(|(_, v)| {
+        .map(|(name, v)| {
             let save_file = Path::new(&handle.config().game_dir)
                 .join("mods")
                 .join(&v.file_name);
@@ -122,13 +112,13 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
                 url: v
                     .url
                     .to_owned()
-                    .ok_or_else(|| anyhow::anyhow!("url is none"))?,
+                    .ok_or_else(|| anyhow::anyhow!("Missing URL for mod {}", name))?,
                 sha1: Some(
                     v.sha1
                         .to_owned()
-                        .ok_or_else(|| anyhow::anyhow!("sha1 is none"))?,
+                        .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {}", name))?,
                 ),
-                message: format!("mod {:?} installed", &save_file),
+                message: format!("Mod {:?} installed", &save_file),
                 save_file,
             })
         })
@@ -145,7 +135,7 @@ pub fn install() -> Result<()> {
             .locked_config()
             .mods
             .to_owned()
-            .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
+            .ok_or_else(|| anyhow::anyhow!("No mods found in config.lock"))?
             .into_iter()
             .filter(|(name, _)| {
                 config_handler
