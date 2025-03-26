@@ -170,43 +170,66 @@ fn progress_bar(len: usize) -> Result<ProgressBar> {
     Ok(bar)
 }
 
-async fn sync_or_update_handle(
-    (name, conf, sync): (String, ModConfig, bool),
-    origin_config_share: Arc<RuntimeConfig>,
+fn is_mod_synced(
+    (name, conf): (&str, &ModConfig),
     handle_share: Arc<RwLock<ConfigHandler>>,
-    bar_share: ProgressBar,
-) -> Result<()> {
+) -> bool {
     if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
-        if sync
-            && mods.iter().any(|(mod_name, locked_conf)| {
-                mod_name == &name && conf.version == locked_conf.version
-            })
+        if mods
+            .iter()
+            .any(|(mod_name, locked_conf)| mod_name == name && conf.version == locked_conf.version)
         {
-            bar_share.inc(1);
-            bar_share.set_message(format!("Mod {} synced", name));
-            return Ok(());
+            return true;
         }
     }
+    false
+}
 
-    if let Some(ver) = conf.version {
+async fn fetch_mod_to_config(
+    (name, conf, sync): (&str, &ModConfig, bool),
+    origin_config_share: Arc<RuntimeConfig>,
+    handle_share: Arc<RwLock<ConfigHandler>>,
+) -> Result<()> {
+    if let Some(ver) = conf.version.clone() {
         let version = {
             let ver = if sync { Some(ver) } else { None };
-            fetch_version(&name, &ver, &origin_config_share)
+            fetch_version(name, &ver, &origin_config_share)
                 .await?
                 .remove(0)
         };
         handle_share
             .write()
             .unwrap()
-            .add_mod_from(&name, version)
-            .unwrap();
+            .add_mod_from(name, version)
+            .unwrap()
+    }
+    Ok(())
+}
 
+async fn sync_or_update_handle(
+    (name, conf, sync): (String, ModConfig, bool),
+    origin_config_share: Arc<RuntimeConfig>,
+    handle_share: Arc<RwLock<ConfigHandler>>,
+    bar_share: ProgressBar,
+) -> Result<()> {
+    if sync && is_mod_synced((&name, &conf), handle_share.clone()) {
         bar_share.inc(1);
-        if sync {
-            bar_share.set_message(format!("Mod {} synced", name));
-        } else {
-            bar_share.set_message(format!("Mod {} updated", name));
-        }
+        bar_share.set_message(format!("Mod {} synced", name));
+        return Ok(());
+    }
+
+    fetch_mod_to_config(
+        (&name, &conf, sync),
+        origin_config_share,
+        handle_share.clone(),
+    )
+    .await?;
+
+    bar_share.inc(1);
+    if sync {
+        bar_share.set_message(format!("Mod {} synced", name));
+    } else {
+        bar_share.set_message(format!("Mod {} updated", name));
     }
 
     if let Some(file_name) = conf.file_name {
