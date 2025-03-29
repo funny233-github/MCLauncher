@@ -170,76 +170,80 @@ fn progress_bar(len: usize) -> Result<ProgressBar> {
     Ok(bar)
 }
 
-fn is_mod_synced(
-    (name, conf): (&str, &ModConfig),
-    handle_share: Arc<RwLock<ConfigHandler>>,
-) -> bool {
-    if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
-        if mods
-            .iter()
-            .any(|(mod_name, locked_conf)| mod_name == name && conf.version == locked_conf.version)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-async fn fetch_mod_to_config(
-    (name, conf, sync): (&str, &ModConfig, bool),
-    origin_config_share: Arc<RuntimeConfig>,
-    handle_share: Arc<RwLock<ConfigHandler>>,
-) -> Result<()> {
-    if let Some(ver) = conf.version.clone() {
-        let version = {
-            let ver = if sync { Some(ver) } else { None };
-            fetch_version(name, &ver, &origin_config_share)
-                .await?
-                .remove(0)
-        };
-        handle_share
-            .write()
-            .unwrap()
-            .add_mod_from(name, version)
-            .unwrap()
-    }
-    Ok(())
-}
-
-async fn sync_or_update_handle(
-    (name, conf, sync): (String, ModConfig, bool),
+struct SyncUpdateHandle {
+    name: String,
+    conf: ModConfig,
+    sync: bool,
     origin_config_share: Arc<RuntimeConfig>,
     handle_share: Arc<RwLock<ConfigHandler>>,
     bar_share: ProgressBar,
-) -> Result<()> {
-    if sync && is_mod_synced((&name, &conf), handle_share.clone()) {
-        bar_share.inc(1);
-        bar_share.set_message(format!("Mod {} synced", name));
-        return Ok(());
-    }
+}
 
-    fetch_mod_to_config(
-        (&name, &conf, sync),
-        origin_config_share,
-        handle_share.clone(),
-    )
-    .await?;
-
-    bar_share.inc(1);
-    if sync {
-        bar_share.set_message(format!("Mod {} synced", name));
-    } else {
-        bar_share.set_message(format!("Mod {} updated", name));
-    }
-
-    if let Some(file_name) = conf.file_name {
-        handle_share
-            .write()
+impl SyncUpdateHandle {
+    fn is_mod_synced(&self) -> bool {
+        if let Some(mods) = self
+            .handle_share
+            .read()
             .unwrap()
-            .add_mod_local(&file_name)
-            .unwrap();
+            .locked_config()
+            .mods
+            .as_ref()
+        {
+            if mods.iter().any(|(mod_name, locked_conf)| {
+                mod_name == &self.name && self.conf.version == locked_conf.version
+            }) {
+                return true;
+            }
+        }
+        false
     }
-    Ok(())
+
+    async fn fetch_mod_to_config(&self) -> Result<()> {
+        if let Some(ver) = self.conf.version.clone() {
+            let version = {
+                let ver = if self.sync { Some(ver) } else { None };
+                fetch_version(&self.name, &ver, &self.origin_config_share)
+                    .await?
+                    .remove(0)
+            };
+            self.handle_share
+                .write()
+                .unwrap()
+                .add_mod_from(&self.name, version)
+                .unwrap()
+        }
+        Ok(())
+    }
+
+    fn update_bar(&self) {
+        self.bar_share.inc(1);
+        if self.sync {
+            self.bar_share
+                .set_message(format!("Mod {} synced", self.name));
+        } else {
+            self.bar_share
+                .set_message(format!("Mod {} updated", self.name));
+        }
+    }
+
+    async fn execute(self) -> Result<()> {
+        if self.is_mod_synced() {
+            self.update_bar();
+            return Ok(());
+        }
+
+        self.fetch_mod_to_config().await?;
+        self.update_bar();
+
+        if let Some(file_name) = self.conf.file_name {
+            self.handle_share
+                .write()
+                .unwrap()
+                .add_mod_local(&file_name)
+                .unwrap();
+        }
+        Ok(())
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -250,12 +254,15 @@ async fn sync_or_update(sync: bool) -> Result<()> {
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len())?;
         let tasks = mods.into_iter().map(|(name, conf)| {
-            sync_or_update_handle(
-                (name, conf, sync),
-                origin_config.clone(),
-                config_handler.clone(),
-                bar.clone(),
-            )
+            let sync_update_handle = SyncUpdateHandle {
+                name,
+                conf,
+                sync,
+                origin_config_share: origin_config.clone(),
+                handle_share: config_handler.clone(),
+                bar_share: bar.clone(),
+            };
+            sync_update_handle.execute()
         });
         stream::iter(tasks)
             .buffer_unordered(10)
