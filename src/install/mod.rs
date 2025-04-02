@@ -11,6 +11,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
 };
+use std::{fs::File, io::Read};
 use zip::ZipArchive;
 
 #[cfg(target_os = "windows")]
@@ -46,17 +47,24 @@ pub enum InstallType {
 }
 
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    let version = fetch_version(config)?;
-
-    let version_json_file = Path::new(&config.game_dir)
+    let version_json_file_path = Path::new(&config.game_dir)
         .join("versions")
         .join(&config.game_version)
         .join(config.game_version.clone() + ".json");
-    version.install(&version_json_file);
+
+    if !version_json_file_path.exists() {
+        let version = fetch_version(config)?;
+        version.install(&version_json_file_path);
+    }
 
     let native_dir = Path::new(&config.game_dir).join("natives");
     fs::create_dir_all(native_dir).unwrap_or(());
 
+    let mut version_json_file = File::open(version_json_file_path)?;
+    let mut content = String::new();
+    version_json_file.read_to_string(&mut content)?;
+
+    let version: Version = serde_json::from_str(&content)?;
     install_dependencies(config, &version)?;
     Ok(())
 }
@@ -233,7 +241,8 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
     let libraries = &version_json.libraries;
     libraries
         .iter()
-        .filter(|lib| lib.is_target_native()).try_for_each(|lib| {
+        .filter(|lib| lib.is_target_native())
+        .try_for_each(|lib| {
             let key = lib
                 .natives
                 .as_ref()
@@ -283,7 +292,8 @@ fn client_installtask(
     let json_client = &version_json.downloads["client"];
     Ok(InstallTask {
         url: json_client["url"]
-            .as_str().map(|str| str.to_string().replace_domain(client_mirror))
+            .as_str()
+            .map(|str| str.to_string().replace_domain(client_mirror))
             .ok_or_else(|| anyhow::anyhow!("take url failed"))??,
         sha1: Some(
             json_client["sha1"]

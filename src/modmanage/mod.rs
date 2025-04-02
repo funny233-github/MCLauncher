@@ -10,7 +10,37 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use tabled::{settings::Style, Table, Tabled};
 use walkdir::WalkDir;
+
+fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
+    version
+        .game_versions
+        .iter()
+        .any(|x| x == &config.game_version)
+        && version.loaders.iter().any(|x| match config.loader {
+            MCLoader::None => false,
+            MCLoader::Fabric(_) => x == "fabric",
+        })
+}
+
+fn filter_versions(
+    versions: Vec<Version>,
+    version: &Option<String>,
+    config: &RuntimeConfig,
+) -> Result<Vec<Version>> {
+    let res: Vec<Version> = versions
+        .into_iter()
+        .filter(|x| is_version_supported(x, config))
+        .filter(|x| version.as_ref().is_none_or(|v| &x.version_number == v))
+        .collect();
+
+    if res.is_empty() {
+        Err(anyhow::anyhow!("No matching versions found"))
+    } else {
+        Ok(res)
+    }
+}
 
 pub async fn fetch_version(
     name: &str,
@@ -18,27 +48,7 @@ pub async fn fetch_version(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch(name).await?;
-    let res: Vec<Version> = versions
-        .into_iter()
-        .filter(|x| {
-            x.game_versions.iter().any(|x| x == &config.game_version)
-                && x.loaders.iter().any(|x| match config.loader {
-                    MCLoader::None => false,
-                    MCLoader::Fabric(_) => x == "fabric",
-                })
-        })
-        .filter(|x| {
-            if let Some(v) = &version {
-                &x.version_number == v
-            } else {
-                true
-            }
-        })
-        .collect();
-    if res.is_empty() {
-        return Err(anyhow::anyhow!("Can't fetch {}", name));
-    };
-    Ok(res)
+    filter_versions(versions, version, config)
 }
 
 pub fn fetch_version_blocking(
@@ -47,27 +57,7 @@ pub fn fetch_version_blocking(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch_blocking(name)?;
-    let res: Vec<Version> = versions
-        .into_iter()
-        .filter(|x| {
-            x.game_versions.iter().any(|x| x == &config.game_version)
-                && x.loaders.iter().any(|x| match config.loader {
-                    MCLoader::None => false,
-                    MCLoader::Fabric(_) => x == "fabric",
-                })
-        })
-        .filter(|x| {
-            if let Some(v) = &version {
-                &x.version_number == v
-            } else {
-                true
-            }
-        })
-        .collect();
-    if res.is_empty() {
-        return Err(anyhow::anyhow!("Can't fetch {}", name));
-    }
-    Ok(res)
+    filter_versions(versions, version, config)
 }
 
 pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
@@ -106,14 +96,15 @@ pub fn update(config_only: bool) -> Result<()> {
 }
 
 fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
-    handle
+    let mods = handle
         .locked_config()
         .mods
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
-        .iter()
+        .ok_or_else(|| anyhow::anyhow!("No mods found in config.lock"))?;
+
+    mods.iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
-        .map(|(_, v)| {
+        .map(|(name, v)| {
             let save_file = Path::new(&handle.config().game_dir)
                 .join("mods")
                 .join(&v.file_name);
@@ -121,13 +112,13 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
                 url: v
                     .url
                     .to_owned()
-                    .ok_or_else(|| anyhow::anyhow!("url is none"))?,
+                    .ok_or_else(|| anyhow::anyhow!("Missing URL for mod {}", name))?,
                 sha1: Some(
                     v.sha1
                         .to_owned()
-                        .ok_or_else(|| anyhow::anyhow!("sha1 is none"))?,
+                        .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {}", name))?,
                 ),
-                message: format!("mod {:?} installed", &save_file),
+                message: format!("Mod {:?} installed", &save_file),
                 save_file,
             })
         })
@@ -144,7 +135,7 @@ pub fn install() -> Result<()> {
             .locked_config()
             .mods
             .to_owned()
-            .ok_or_else(|| anyhow::anyhow!("there are no mod in config.lock"))?
+            .ok_or_else(|| anyhow::anyhow!("No mods found in config.lock"))?
             .into_iter()
             .filter(|(name, _)| {
                 config_handler
@@ -179,53 +170,80 @@ fn progress_bar(len: usize) -> Result<ProgressBar> {
     Ok(bar)
 }
 
-async fn sync_or_update_handle(
-    (name, conf, sync): (String, ModConfig, bool),
+struct SyncUpdateHandle {
+    name: String,
+    conf: ModConfig,
+    sync: bool,
     origin_config_share: Arc<RuntimeConfig>,
     handle_share: Arc<RwLock<ConfigHandler>>,
     bar_share: ProgressBar,
-) -> Result<()> {
-    if let Some(mods) = handle_share.read().unwrap().locked_config().mods.as_ref() {
-        if sync
-            && mods.iter().any(|(mod_name, locked_conf)| {
-                mod_name == &name && conf.version == locked_conf.version
-            })
+}
+
+impl SyncUpdateHandle {
+    fn is_mod_synced(&self) -> bool {
+        if let Some(mods) = self
+            .handle_share
+            .read()
+            .unwrap()
+            .locked_config()
+            .mods
+            .as_ref()
         {
-            bar_share.inc(1);
-            bar_share.set_message(format!("Mod {} synced", name));
+            if mods.iter().any(|(mod_name, locked_conf)| {
+                mod_name == &self.name && self.conf.version == locked_conf.version
+            }) {
+                return true;
+            }
+        }
+        false
+    }
+
+    async fn fetch_mod_to_config(&self) -> Result<()> {
+        if let Some(ver) = self.conf.version.clone() {
+            let version = {
+                let ver = if self.sync { Some(ver) } else { None };
+                fetch_version(&self.name, &ver, &self.origin_config_share)
+                    .await?
+                    .remove(0)
+            };
+            self.handle_share
+                .write()
+                .unwrap()
+                .add_mod_from(&self.name, version)
+                .unwrap()
+        }
+        Ok(())
+    }
+
+    fn update_bar(&self) {
+        self.bar_share.inc(1);
+        if self.sync {
+            self.bar_share
+                .set_message(format!("Mod {} synced", self.name));
+        } else {
+            self.bar_share
+                .set_message(format!("Mod {} updated", self.name));
+        }
+    }
+
+    async fn execute(self) -> Result<()> {
+        if self.is_mod_synced() {
+            self.update_bar();
             return Ok(());
         }
-    }
 
-    if let Some(ver) = conf.version {
-        let version = {
-            let ver = if sync { Some(ver) } else { None };
-            fetch_version(&name, &ver, &origin_config_share)
-                .await?
-                .remove(0)
-        };
-        handle_share
-            .write()
-            .unwrap()
-            .add_mod_from(&name, version)
-            .unwrap();
+        self.fetch_mod_to_config().await?;
+        self.update_bar();
 
-        bar_share.inc(1);
-        if sync {
-            bar_share.set_message(format!("Mod {} synced", name));
-        } else {
-            bar_share.set_message(format!("Mod {} updated", name));
+        if let Some(file_name) = self.conf.file_name {
+            self.handle_share
+                .write()
+                .unwrap()
+                .add_mod_local(&file_name)
+                .unwrap();
         }
+        Ok(())
     }
-
-    if let Some(file_name) = conf.file_name {
-        handle_share
-            .write()
-            .unwrap()
-            .add_mod_local(&file_name)
-            .unwrap();
-    }
-    Ok(())
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -236,12 +254,15 @@ async fn sync_or_update(sync: bool) -> Result<()> {
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len())?;
         let tasks = mods.into_iter().map(|(name, conf)| {
-            sync_or_update_handle(
-                (name, conf, sync),
-                origin_config.clone(),
-                config_handler.clone(),
-                bar.clone(),
-            )
+            let sync_update_handle = SyncUpdateHandle {
+                name,
+                conf,
+                sync,
+                origin_config_share: origin_config.clone(),
+                handle_share: config_handler.clone(),
+                bar_share: bar.clone(),
+            };
+            sync_update_handle.execute()
         });
         stream::iter(tasks)
             .buffer_unordered(10)
@@ -315,27 +336,62 @@ pub fn clean() -> Result<()> {
     Ok(())
 }
 
+#[derive(Debug, Tabled)]
+struct HitsInfo {
+    slug: String,
+    description: String,
+}
+
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
+
     let loader = match handle.config().loader {
         MCLoader::Fabric(_) => "fabric",
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
+
     let game_version = handle.config().game_version.as_ref();
+
     let projects = Projects::fetch_blocking(name, limit)?;
-    let res: Vec<_> = projects
+
+    let res: Result<Vec<_>> = projects
         .hits
         .iter()
-        .filter(|hit| {
+        .filter_map(|hit| {
             let project_slug = hit.slug.as_ref();
-            let project_version = Versions::fetch_blocking(project_slug).unwrap();
-            hit.is_mod()
-                && project_version
-                    .into_iter()
-                    .any(|v| v.is_support_loader(loader) && v.is_support_game_version(game_version))
+            let project_version = Versions::fetch_blocking(project_slug);
+            match project_version {
+                Ok(versions) => {
+                    let is_support_mod = hit.is_mod()
+                        && versions.into_iter().any(|v| {
+                            v.is_support_loader(loader) && v.is_support_game_version(game_version)
+                        });
+                    if is_support_mod {
+                        Some(Ok(HitsInfo {
+                            slug: hit.slug.to_owned(),
+                            description: hit.description.to_owned(),
+                        }))
+                    } else {
+                        None
+                    }
+                }
+                Err(e) => Some(Err(e)),
+            }
         })
-        .map(|hit| (hit.slug.to_owned(), hit.description.to_owned()))
         .collect();
-    println!("{:#?}", res);
+    let res = res?;
+
+    match res.len() {
+        0 => println!("No match mods found!"),
+        1..=10 => {
+            let mut table = Table::new(res);
+            println!("{}", table.with(Style::modern()));
+        }
+        _ => {
+            let mut table = Table::new(res);
+            println!("{}", table.with(Style::modern()));
+            println!("use --limit N to see more");
+        }
+    }
     Ok(())
 }

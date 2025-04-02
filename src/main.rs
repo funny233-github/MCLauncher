@@ -49,11 +49,19 @@ enum Command {
 
 #[derive(Subcommand, Debug)]
 enum ListSub {
-    #[command(subcommand)]
-    MC(VersionType),
+    MC {
+        #[command(subcommand)]
+        mc: VersionType,
+
+        #[arg(long, default_value_t = 60)]
+        limit: usize,
+    },
     Loader {
         #[command(subcommand)]
         loader: Loaders,
+
+        #[arg(long, default_value_t = 60)]
+        limit: usize,
     },
 }
 
@@ -72,22 +80,25 @@ enum Mirrors {
 enum ModManage {
     Add {
         name: String,
+
         version: Option<String>,
+
         #[arg(long)]
         local: bool,
-        #[arg(long)]
+
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Remove {
         name: String,
     },
     Update {
-        #[arg(long)]
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Install,
     Sync {
-        #[arg(long)]
+        #[arg(long, short = 'c', default_value_t = false)]
         config_only: bool,
     },
     Search {
@@ -97,6 +108,27 @@ enum ModManage {
         limit: Option<usize>,
     },
     Clean,
+}
+
+fn print_version_list(name: &str, versions: &[String], limit: usize) -> anyhow::Result<()> {
+    let count = versions.len();
+    let display_count = limit.min(count);
+    let mut table = tabled::Table::from_iter(
+        versions
+            .iter()
+            .take(limit)
+            .cloned()
+            .collect::<Vec<String>>()
+            .chunks(6),
+    );
+    println!(
+        "Available {} versions ({}/{}):\n{}",
+        name,
+        display_count,
+        count,
+        table.with(tabled::settings::Style::modern())
+    );
+    Ok(())
 }
 
 fn handle_args() -> anyhow::Result<()> {
@@ -109,15 +141,21 @@ fn handle_args() -> anyhow::Result<()> {
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
             match sub {
-                ListSub::MC(_type) => {
+                ListSub::MC {
+                    mc: version_type,
+                    limit: list_limit,
+                } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
-                        .list(_type.into());
-                    println!("{:?}", list);
+                        .list(version_type.into());
+                    print_version_list("Minecraft", &list, list_limit)?;
                 }
-                ListSub::Loader { loader: _loader } => {
+                ListSub::Loader {
+                    loader: _loader,
+                    limit: list_limit,
+                } => {
                     let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
-                    let list: Vec<&str> = l.iter().map(|x| x.version.as_ref()).collect();
-                    println!("{:?}", list);
+                    let list: Vec<String> = l.iter().map(|x| x.version.to_owned()).collect();
+                    print_version_list("fabric loader", &list, list_limit)?;
                 }
             }
         }
@@ -178,6 +216,6 @@ fn handle_args() -> anyhow::Result<()> {
 fn main() {
     env_logger::init();
     if let Err(e) = handle_args() {
-        error!("{:#?}", e);
+        error!("Error occurred: {}\nCaused by: {:?}", e, e.source());
     }
 }
