@@ -141,13 +141,7 @@ impl Default for RuntimeConfig {
             max_memory_size: 5000,
             window_weight: 854,
             window_height: 480,
-            game_dir: std::env::current_dir()
-                .unwrap_or_else(|e| panic!("Failed to get current directory: {}", e))
-                .to_str()
-                .ok_or_else(|| panic!("Path contains invalid UTF-8"))
-                .unwrap_or_else(|e| panic!("Failed to convert path to string: {:?}", e))
-                .to_owned()
-                + "/",
+            game_dir: "./".into(),
             game_version: "no_game_version".into(),
             java_path: "java".into(),
             loader: MCLoader::None,
