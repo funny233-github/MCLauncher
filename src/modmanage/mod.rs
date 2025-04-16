@@ -227,7 +227,7 @@ impl SyncUpdateHandle {
     }
 
     async fn execute(self) -> Result<()> {
-        if self.is_mod_synced() {
+        if self.sync && self.is_mod_synced() {
             self.update_bar();
             return Ok(());
         }
