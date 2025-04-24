@@ -405,18 +405,18 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
-    pub fn has_mod_config(&self, mod_conf: &ModConfig) -> bool {
+    pub fn is_mod_config_match(&self, name: &str, mod_conf: &ModConfig) -> bool {
         self.config()
             .mods
             .clone()
-            .is_some_and(|mods| mods.iter().any(|(_, conf)| conf == mod_conf))
+            .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
-    pub fn has_locked_mod_config(&self, mod_conf: &LockedModConfig) -> bool {
+    pub fn is_locked_mod_config_match(&self, name: &str, mod_conf: &LockedModConfig) -> bool {
         self.locked_config()
             .mods
             .clone()
-            .is_some_and(|mods| mods.iter().any(|(_, conf)| conf == mod_conf))
+            .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
     /// Read config.toml and config.lock
@@ -532,12 +532,12 @@ impl ConfigHandler {
         let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        if !self.has_mod_config(&modconf) {
+        if !self.is_mod_config_match(name, &modconf) {
             self.config_mut().add_mod(name, modconf);
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        if !self.has_locked_mod_config(&locked_modconf) {
+        if !self.is_locked_mod_config_match(name, &locked_modconf) {
             self.locked_config_mut().add_mod(name, locked_modconf);
         }
         Ok(())
@@ -550,12 +550,12 @@ impl ConfigHandler {
         let version = fetch_version(name, version, &self.config).await?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
-        if !self.has_mod_config(&modconf) {
+        if !self.is_mod_config_match(name, &modconf) {
             self.config_mut().add_mod(name, modconf);
         }
 
         let locked_modconf = LockedModConfig::from(version);
-        if !self.has_locked_mod_config(&locked_modconf) {
+        if !self.is_locked_mod_config_match(name, &locked_modconf) {
             self.locked_config_mut().add_mod(name, locked_modconf);
         }
         Ok(())
@@ -564,13 +564,13 @@ impl ConfigHandler {
     /// Add mod from Version data
     pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
         let modconf = ModConfig::from(version.clone());
-        if !self.has_mod_config(&modconf) {
+        if !self.is_mod_config_match(name, &modconf) {
             self.config_mut().add_mod(name, modconf);
         }
 
         let locked_modconf = LockedModConfig::from(version);
 
-        if !self.has_locked_mod_config(&locked_modconf) {
+        if !self.is_locked_mod_config_match(name, &locked_modconf) {
             self.locked_config_mut().add_mod(name, locked_modconf);
         }
         Ok(())
