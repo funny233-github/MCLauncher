@@ -441,16 +441,19 @@ impl ConfigHandler {
         }
         let config = Mac::new(config);
 
-        let locked_config = if fs::metadata("config.lock").is_ok() {
+        let locked_config = if fs::exists("config.lock").is_ok() {
             let data = fs::read_to_string("config.lock")?;
-            toml::from_str(&data)?
+            Mac::new(toml::from_str(&data)?)
         } else {
-            LockedConfig::default()
+            Mac::new(LockedConfig::default())
         };
 
-        let user_account = Mac::new(toml::from_str(&fs::read_to_string("account.toml")?)?);
+        let user_account = if fs::exists("account.toml").is_ok() {
+            Mac::new(toml::from_str(&fs::read_to_string("account.toml")?)?)
+        } else {
+            Mac::new(UserAccount::default())
+        };
 
-        let locked_config = Mac::new(locked_config);
         Ok(ConfigHandler {
             config,
             locked_config,
