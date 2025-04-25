@@ -1,6 +1,7 @@
 use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
 use anyhow::Result;
 use futures::stream::{self, StreamExt};
+use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use installer::{InstallTask, TaskPool};
 use modrinth_api::{Projects, Version, Versions};
@@ -28,6 +29,7 @@ fn filter_versions(
     versions: Vec<Version>,
     version: &Option<String>,
     config: &RuntimeConfig,
+    name: &str,
 ) -> Result<Vec<Version>> {
     let res: Vec<Version> = versions
         .into_iter()
@@ -36,7 +38,7 @@ fn filter_versions(
         .collect();
 
     if res.is_empty() {
-        Err(anyhow::anyhow!("No matching versions found"))
+        Err(anyhow::anyhow!("No matching versions found for '{}'", name))
     } else {
         Ok(res)
     }
@@ -48,7 +50,7 @@ pub async fn fetch_version(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch(name).await?;
-    filter_versions(versions, version, config)
+    filter_versions(versions, version, config, name)
 }
 
 pub fn fetch_version_blocking(
@@ -57,7 +59,7 @@ pub fn fetch_version_blocking(
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch_blocking(name)?;
-    filter_versions(versions, version, config)
+    filter_versions(versions, version, config, name)
 }
 
 pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
@@ -266,8 +268,8 @@ async fn sync_or_update(sync: bool) -> Result<()> {
         });
         stream::iter(tasks)
             .buffer_unordered(10)
-            .collect::<Vec<_>>()
-            .await;
+            .try_collect::<Vec<_>>()
+            .await?;
     }
 
     if sync {
