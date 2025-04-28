@@ -184,7 +184,7 @@ struct SyncUpdateHandle {
 impl SyncUpdateHandle {
     fn is_mod_synced(&self) -> bool {
         let handle = self.handle_share.read().unwrap();
-        let mc_version = handle.config().game_version.as_ref();
+        let mc_version: &str = handle.config().game_version.as_ref();
         let locked_config_mods = handle.locked_config().mods.as_ref();
 
         if let Some(mods) = locked_config_mods {
