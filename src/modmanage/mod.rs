@@ -183,16 +183,15 @@ struct SyncUpdateHandle {
 
 impl SyncUpdateHandle {
     fn is_mod_synced(&self) -> bool {
-        if let Some(mods) = self
-            .handle_share
-            .read()
-            .unwrap()
-            .locked_config()
-            .mods
-            .as_ref()
-        {
+        let handle = self.handle_share.read().unwrap();
+        let mc_version = handle.config().game_version.as_ref();
+        let locked_config_mods = handle.locked_config().mods.as_ref();
+
+        if let Some(mods) = locked_config_mods {
             if mods.iter().any(|(mod_name, locked_conf)| {
-                mod_name == &self.name && self.conf.version == locked_conf.version
+                mod_name == &self.name
+                    && self.conf.version == locked_conf.version
+                    && mc_version == locked_conf.mc_version
             }) {
                 return true;
             }
