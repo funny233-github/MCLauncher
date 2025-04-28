@@ -173,16 +173,23 @@ impl From<VersionType> for official::VersionType {
 pub struct LockedModConfig {
     pub file_name: String,
     pub version: Option<String>,
+    pub mc_version: String,
     pub url: Option<String>,
     pub sha1: Option<String>,
 }
 
 impl From<Version> for LockedModConfig {
-    fn from(mut version: Version) -> Self {
-        let file = version.files.remove(0);
+    fn from(version: Version) -> Self {
+        let file = version.files.to_owned().remove(0);
+        let mc_version = ConfigHandler::read()
+            .unwrap()
+            .config()
+            .game_version
+            .to_owned();
         Self {
             file_name: file.filename,
             version: Some(version.version_number),
+            mc_version,
             url: Some(file.url),
             sha1: Some(file.hashes.sha1),
         }
@@ -190,9 +197,15 @@ impl From<Version> for LockedModConfig {
 }
 impl LockedModConfig {
     pub fn from_local(file_name: &str) -> Self {
+        let mc_version = ConfigHandler::read()
+            .unwrap()
+            .config()
+            .game_version
+            .to_owned();
         Self {
             file_name: file_name.to_owned(),
             version: None,
+            mc_version,
             url: None,
             sha1: None,
         }
@@ -229,13 +242,7 @@ impl LockedConfig {
     /// config.add_local_mod("file name");
     /// ```
     pub fn add_local_mod(&mut self, name: &str) {
-        let modconf = LockedModConfig {
-            file_name: name.to_owned(),
-            version: None,
-            url: None,
-            sha1: None,
-        };
-        self.add_mod(name, modconf);
+        self.add_mod(name, LockedModConfig::from_local(name));
     }
 
     /// remove mod for locked config
