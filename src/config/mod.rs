@@ -346,6 +346,23 @@ impl<T> DerefMut for Mac<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct ConfigPaths {
+    config_path: String,
+    locked_config_path: String,
+    user_account_path: String,
+}
+
+impl Default for ConfigPaths {
+    fn default() -> Self {
+        Self {
+            config_path: "config.toml".into(),
+            locked_config_path: "config.lock".into(),
+            user_account_path: "account.toml".into(),
+        }
+    }
+}
+
 /// # Writing with Mutable Access
 ///
 /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
@@ -356,6 +373,7 @@ pub struct ConfigHandler {
     config: Mac<RuntimeConfig>,
     locked_config: Mac<LockedConfig>,
     user_account: Mac<UserAccount>,
+    paths: ConfigPaths,
 }
 
 impl ConfigHandler {
@@ -388,11 +406,17 @@ impl ConfigHandler {
     pub fn user_account_mut(&mut self) -> &mut UserAccount {
         &mut self.user_account
     }
+
     pub fn init() -> Result<()> {
+        ConfigHandler::init_for_paths(ConfigPaths::default())
+    }
+
+    pub fn init_for_paths(paths: ConfigPaths) -> Result<()> {
         let handle = Self {
             config: Mac::new(RuntimeConfig::default()),
             locked_config: Mac::new(LockedConfig::default()),
             user_account: Mac::new(UserAccount::default()),
+            paths,
         };
         handle.write_all()?;
         Ok(())
@@ -425,15 +449,24 @@ impl ConfigHandler {
             .clone()
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
-
-    /// Read config.toml and config.lock
+    /// Read config.toml and config.lock and account.toml
     /// # Error
     /// Error when config.toml not exist
     /// Error When config.toml or config.lock context is invalid
     /// # Note
     /// When config.lock not exist, this function will create a default config.lock data
     pub fn read() -> Result<Self> {
-        let config = fs::read_to_string("config.toml")?;
+        ConfigHandler::read_from_paths(ConfigPaths::default())
+    }
+
+    /// Read config.toml and config.lock account.toml from paths
+    /// # Error
+    /// Error when config.toml not exist
+    /// Error When config.toml or config.lock context is invalid
+    /// # Note
+    /// When config.lock not exist, this function will create a default config.lock data
+    pub fn read_from_paths(paths: ConfigPaths) -> Result<Self> {
+        let config = fs::read_to_string(&paths.config_path)?;
         let config: RuntimeConfig = toml::from_str(&config)?;
 
         if let Some(mods) = config.mods.as_ref() {
@@ -448,15 +481,17 @@ impl ConfigHandler {
         }
         let config = Mac::new(config);
 
-        let locked_config = if fs::exists("config.lock").is_ok() {
-            let data = fs::read_to_string("config.lock")?;
+        let locked_config = if fs::exists(&paths.locked_config_path).is_ok() {
+            let data = fs::read_to_string(&paths.locked_config_path)?;
             Mac::new(toml::from_str(&data)?)
         } else {
             Mac::new(LockedConfig::default())
         };
 
-        let user_account = if fs::exists("account.toml").is_ok() {
-            Mac::new(toml::from_str(&fs::read_to_string("account.toml")?)?)
+        let user_account = if fs::exists(&paths.user_account_path).is_ok() {
+            Mac::new(toml::from_str(&fs::read_to_string(
+                &paths.user_account_path,
+            )?)?)
         } else {
             Mac::new(UserAccount::default())
         };
@@ -465,6 +500,7 @@ impl ConfigHandler {
             config,
             locked_config,
             user_account,
+            paths,
         })
     }
 
@@ -474,12 +510,18 @@ impl ConfigHandler {
     }
 
     pub fn write_all(&self) -> Result<()> {
-        fs::write("config.toml", toml::to_string_pretty(self.config.get())?)?;
         fs::write(
-            "config.lock",
+            &self.paths.config_path,
+            toml::to_string_pretty(self.config.get())?,
+        )?;
+        fs::write(
+            &self.paths.locked_config_path,
             toml::to_string_pretty(self.locked_config.get())?,
         )?;
-        fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
+        fs::write(
+            &self.paths.user_account_path,
+            toml::to_string_pretty(self.user_account())?,
+        )?;
 
         let mod_dir = Path::new(&self.config().game_dir).join("mods");
         if fs::metadata(mod_dir).is_ok() {
@@ -497,16 +539,22 @@ impl ConfigHandler {
     /// In contrast, the `locked_config` field will not write.
     pub fn write_with_mut(&self) -> Result<()> {
         if self.config.has_mut_accessed() {
-            fs::write("config.toml", toml::to_string_pretty(self.config.get())?)?;
+            fs::write(
+                &self.paths.config_path,
+                toml::to_string_pretty(self.config.get())?,
+            )?;
         }
         if self.locked_config.has_mut_accessed() {
             fs::write(
-                "config.lock",
+                &self.paths.locked_config_path,
                 toml::to_string_pretty(self.locked_config.get())?,
             )?;
         }
         if self.user_account.has_mut_accessed() {
-            fs::write("account.toml", toml::to_string_pretty(self.user_account())?)?;
+            fs::write(
+                &self.paths.user_account_path,
+                toml::to_string_pretty(self.user_account())?,
+            )?;
         }
 
         let mod_dir = Path::new(&self.config().game_dir).join("mods");
