@@ -196,16 +196,11 @@ impl From<Version> for LockedModConfig {
     }
 }
 impl LockedModConfig {
-    pub fn from_local(file_name: &str) -> Self {
-        let mc_version = ConfigHandler::read()
-            .unwrap()
-            .config()
-            .game_version
-            .to_owned();
+    pub fn from_local(file_name: &str, mc_version: &str) -> Self {
         Self {
             file_name: file_name.to_owned(),
             version: None,
-            mc_version,
+            mc_version: mc_version.to_owned(),
             url: None,
             sha1: None,
         }
@@ -223,7 +218,7 @@ impl LockedConfig {
     /// ```
     /// use launcher::config::{LockedConfig, LockedModConfig};
     /// let mut config = LockedConfig::default();
-    /// let mod_conf = LockedModConfig::from_local("file name");
+    /// let mod_conf = LockedModConfig::from_local("file name","1.1.1");
     /// config.add_mod("mod name", mod_conf);
     /// ```
     pub fn add_mod(&mut self, name: &str, modconf: LockedModConfig) {
@@ -239,10 +234,10 @@ impl LockedConfig {
     /// ```
     /// use launcher::config::LockedConfig;
     /// let mut config = LockedConfig::default();
-    /// config.add_local_mod("file name");
+    /// config.add_local_mod("file name","1.1.1");
     /// ```
-    pub fn add_local_mod(&mut self, name: &str) {
-        self.add_mod(name, LockedModConfig::from_local(name));
+    pub fn add_local_mod(&mut self, name: &str, mc_version: &str) {
+        self.add_mod(name, LockedModConfig::from_local(name, mc_version));
     }
 
     /// remove mod for locked config
@@ -250,7 +245,7 @@ impl LockedConfig {
     /// ```
     /// use launcher::config::LockedConfig;
     /// let mut config = LockedConfig::default();
-    /// config.add_local_mod("file name");
+    /// config.add_local_mod("file name","1.1.1");
     /// config.remove_mod("file name");
     /// ```
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
@@ -576,8 +571,10 @@ impl ConfigHandler {
         if !self.has_mod_name(name) {
             self.config_mut().add_local_mod(name);
         }
+
         if !self.has_locked_mod_name(name) {
-            self.locked_config_mut().add_local_mod(name);
+            let mc_version = &self.config().game_version.to_owned();
+            self.locked_config_mut().add_local_mod(name, mc_version);
         }
 
         Ok(())

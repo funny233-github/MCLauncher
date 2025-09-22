@@ -92,7 +92,7 @@ impl Library {
 
 pub type Libraries = Vec<Library>;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Versions {
     pub id: String,
     pub r#type: String,
@@ -102,13 +102,13 @@ pub struct Versions {
     pub release_time: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LatestVersion {
     pub release: String,
     pub snapshot: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionManifest {
     pub latest: LatestVersion,
     pub versions: Vec<Versions>,
