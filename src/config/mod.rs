@@ -684,7 +684,7 @@ impl ConfigHandler {
 
                 if !used_files.contains(&name.to_string()) {
                     let path = mod_dir.join(name);
-                    let new_path = mod_dir.join(format!("{}.unuse", name));
+                    let new_path = mod_dir.join(format!("{name}.unuse"));
                     fs::rename(path, new_path)?;
                 }
             }
@@ -719,7 +719,7 @@ impl ConfigHandler {
             })
         {
             if let Some(name) = &entry?.file_name().to_str() {
-                if used_files.iter().any(|x| &format!("{}.unuse", x) == name) {
+                if used_files.iter().any(|x| &format!("{x}.unuse") == name) {
                     let path = Path::new("mods").join(name);
                     let mut new_name = name.to_string();
                     new_name.truncate(name.len() - 6);
@@ -736,7 +736,7 @@ impl Drop for ConfigHandler {
     #[inline]
     fn drop(&mut self) {
         if let Err(e) = self.write_with_mut() {
-            panic!("Failed to write config on drop: {}", e);
+            panic!("Failed to write config on drop: {e}");
         }
     }
 }

@@ -66,10 +66,10 @@ pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) 
     let mut config_handler = ConfigHandler::read()?;
     let message = if local {
         config_handler.add_mod_local(name)?;
-        format!("Add local mod {} successful", name)
+        format!("Add local mod {name} successful")
     } else {
         config_handler.add_mod_unlocal_blocking(name, &version)?;
-        format!("Add mod {} surcessful", name)
+        format!("Add mod {name} surcessful")
     };
     drop(config_handler);
 
@@ -77,7 +77,7 @@ pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) 
         install()?;
     }
 
-    println!("{}", message);
+    println!("{message}");
     Ok(())
 }
 
