@@ -53,8 +53,7 @@ impl Versions {
         for _ in 0..5 {
             let init = client
                 .get(format!(
-                    "https://api.modrinth.com/v2/project/{}/version",
-                    slug
+                    "https://api.modrinth.com/v2/project/{slug}/version"
                 ))
                 .header(
                     reqwest::header::USER_AGENT,
@@ -99,8 +98,7 @@ impl Versions {
         for _ in 0..5 {
             let init = client
                 .get(format!(
-                    "https://api.modrinth.com/v2/project/{}/version",
-                    slug
+                    "https://api.modrinth.com/v2/project/{slug}/version"
                 ))
                 .header(
                     reqwest::header::USER_AGENT,
