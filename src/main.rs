@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_cargo::style;
 use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
 use launcher::install::install_mc;
 use launcher::modmanage;
@@ -7,7 +8,7 @@ use log::error;
 use mc_api::{fabric::Loader, official::VersionManifest};
 
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = None, styles = style::CLAP_STYLING)]
 struct Args {
     #[command(subcommand)]
     command: Command,
