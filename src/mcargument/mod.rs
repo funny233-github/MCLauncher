@@ -55,7 +55,7 @@ fn replace_arguments_from_game(
         .to_string_lossy()
         .into();
     let assets_index_name = js.assets;
-    let valuemap = HashMap::from([
+    let mut valuemap = HashMap::from([
         (
             "${auth_player_name}",
             handle.user_account().user_name.clone(),
@@ -68,8 +68,10 @@ fn replace_arguments_from_game(
         ("${user_type}", handle.user_account().user_type.clone()),
         ("${version_type}", "release".into()),
     ]);
-    //TODO get user info
-    // valuemap.insert("${auth_access_token}","");
+
+    if let Some(access_token) = &handle.user_account().access_token {
+        valuemap.insert("${auth_access_token}", access_token.to_owned());
+    }
 
     Ok(replace_arguments(args, valuemap))
 }

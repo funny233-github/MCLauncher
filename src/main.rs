@@ -4,7 +4,6 @@ use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
 use launcher::install::install_mc;
 use launcher::modmanage;
 use launcher::runtime::gameruntime;
-use log::error;
 use mc_api::{fabric::Loader, official::VersionManifest};
 
 #[derive(Parser, Debug)]
@@ -25,7 +24,8 @@ enum Command {
     List(ListSub),
 
     /// Change username
-    Account { name: String },
+    #[command(subcommand)]
+    Account(Account),
 
     /// Install Minecraft
     Install {
@@ -64,6 +64,12 @@ enum ListSub {
         #[arg(long, default_value_t = 60)]
         limit: usize,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum Account {
+    Offline { name: String },
+    Microsoft,
 }
 
 #[derive(Subcommand, Debug)]
@@ -160,9 +166,14 @@ fn handle_args() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Account { name: _name } => {
+        Command::Account(account_type) => {
             let mut handle = ConfigHandler::read()?;
-            handle.add_offline_account(&_name);
+            match account_type {
+                Account::Offline { name } => {
+                    handle.add_offline_account(&name);
+                }
+                Account::Microsoft => handle.add_microsoft_account()?,
+            }
         }
         Command::Install { version, fabric } => {
             let mut handle = ConfigHandler::read()?;
@@ -214,9 +225,8 @@ fn handle_args() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
-    if let Err(e) = handle_args() {
-        error!("Error occurred: {}\nCaused by: {:?}", e, e.source());
-    }
+    handle_args()?;
+    Ok(())
 }

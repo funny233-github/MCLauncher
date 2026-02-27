@@ -2,6 +2,7 @@ use crate::modmanage::{fetch_version, fetch_version_blocking};
 use anyhow::Result;
 use clap::Subcommand;
 use mc_api::official;
+use mc_oauth::MCAuth;
 use modrinth_api::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -264,6 +265,7 @@ pub struct UserAccount {
     pub user_name: String,
     pub user_type: String,
     pub user_uuid: String,
+    pub access_token: Option<String>,
 }
 
 impl Default for UserAccount {
@@ -272,6 +274,7 @@ impl Default for UserAccount {
             user_name: "noname".to_owned(),
             user_type: "offline".to_owned(),
             user_uuid: Uuid::new_v4().to_string(),
+            access_token: None,
         }
     }
 }
@@ -282,7 +285,41 @@ impl UserAccount {
             user_name: name.to_owned(),
             user_type: "offline".to_owned(),
             user_uuid: Uuid::new_v4().to_string(),
+            access_token: None,
         }
+    }
+
+    pub fn new_microsoft() -> anyhow::Result<Self> {
+        let auth = MCAuth::from_compile_env();
+        // Step 1: Get device code
+        let device_code_session = auth.get_device_code()?;
+        println!("{}", device_code_session.device_code_response.message);
+
+        // Step 2: Poll for token
+        let token_session = device_code_session.poll_for_token()?;
+        println!("Got access token");
+
+        // Step 3: Authenticate with Xbox Live
+        let xbox_live_session = token_session.authenticate_xbox_live()?;
+        println!("Authenticated with Xbox Live");
+
+        // Step 4: Get XSTS token
+        let xsts_session = xbox_live_session.get_xsts_token()?;
+        println!("Got XSTS token");
+
+        // Step 5: Authenticate with Minecraft
+        let mc_auth_session = xsts_session.authenticate_minecraft()?;
+        println!("Authenticated with Minecraft");
+
+        // Step 6: Get Minecraft profile
+        let profile = mc_auth_session.get_minecraft_profile()?;
+        println!("Got Minecraft profile: {}", profile.name);
+        Ok(Self {
+            user_name: profile.name,
+            user_type: "msa".into(),
+            user_uuid: profile.id,
+            access_token: mc_auth_session.minecraft_auth_response.access_token.into(),
+        })
     }
 }
 
@@ -502,6 +539,12 @@ impl ConfigHandler {
     /// Add offline account which contain name
     pub fn add_offline_account(&mut self, name: &str) {
         *self.user_account_mut() = UserAccount::new_offline(name);
+    }
+
+    /// Add microsoft account
+    pub fn add_microsoft_account(&mut self) -> anyhow::Result<()> {
+        *self.user_account_mut() = UserAccount::new_microsoft()?;
+        Ok(())
     }
 
     pub fn write_all(&self) -> Result<()> {

@@ -5,9 +5,9 @@ permissions:
 
 on:
   push:
-    branches: [ "master" ]
+    branches: ["master"]
   pull_request:
-    branches: [ "master" ]
+    branches: ["master"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -46,12 +46,16 @@ jobs:
         # Rust Tools are already installed and available in the Runner.
         # See: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#rust-tools
         run: cargo build --verbose --release
+        env:
+          AZURE_CLIENT_ID: ${{ AZURE_CLIENT_ID }}
 
       - name: Run tests
         run: >
           cargo test --verbose &&
           cargo test --verbose --manifest-path mc-api/Cargo.toml
         # This may fail, but it does not take affects to our artifacts.
+        env:
+          AZURE_CLIENT_ID: ${{ AZURE_CLIENT_ID }}
         continue-on-error: true
 
       - name: Upload artifact (amd64)
