@@ -2,7 +2,7 @@ use crate::modmanage::{fetch_version, fetch_version_blocking};
 use anyhow::Result;
 use clap::Subcommand;
 use mc_api::official;
-use mc_oauth::MCAuth;
+use mc_oauth::MinecraftAuthenticator;
 use modrinth_api::Version;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -290,35 +290,34 @@ impl UserAccount {
     }
 
     pub fn new_microsoft() -> anyhow::Result<Self> {
-        let auth = MCAuth::from_compile_env();
-        // Step 1: Get device code
-        let device_code_session = auth.get_device_code()?;
-        println!("{}", device_code_session.device_code_response.message);
+        // Step 1: Start device flow
+        let device_flow_state = MinecraftAuthenticator::from_compile_env().start_device_flow()?;
+        println!("{}", device_flow_state.initial_response.message);
 
-        // Step 2: Poll for token
-        let token_session = device_code_session.poll_for_token()?;
+        // Step 2: Wait for token
+        let token_state = device_flow_state.wait_for_token()?;
         println!("Got access token");
 
-        // Step 3: Authenticate with Xbox Live
-        let xbox_live_session = token_session.authenticate_xbox_live()?;
+        // Step 3: Request Xbox Live token
+        let xbox_live_state = token_state.request_xbox_token()?;
         println!("Authenticated with Xbox Live");
 
-        // Step 4: Get XSTS token
-        let xsts_session = xbox_live_session.get_xsts_token()?;
+        // Step 4: Request XSTS token
+        let xsts_state = xbox_live_state.request_xsts_token()?;
         println!("Got XSTS token");
 
-        // Step 5: Authenticate with Minecraft
-        let mc_auth_session = xsts_session.authenticate_minecraft()?;
+        // Step 5: Request Minecraft token
+        let minecraft_state = xsts_state.request_minecraft_token()?;
         println!("Authenticated with Minecraft");
 
-        // Step 6: Get Minecraft profile
-        let profile = mc_auth_session.get_minecraft_profile()?;
+        // Step 6: Fetch Minecraft profile
+        let profile = minecraft_state.fetch_minecraft_profile()?;
         println!("Got Minecraft profile: {}", profile.name);
         Ok(Self {
             user_name: profile.name,
             user_type: "msa".into(),
             user_uuid: profile.id,
-            access_token: mc_auth_session.minecraft_auth_response.access_token.into(),
+            access_token: minecraft_state.minecraft_token_data.access_token.into(),
         })
     }
 }
