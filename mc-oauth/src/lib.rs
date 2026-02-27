@@ -6,69 +6,69 @@ use std::thread;
 use std::time::Duration;
 
 #[derive(Debug, Clone)]
-pub struct MCAuth {
+pub struct MinecraftAuthenticator {
     client_id: String,
 }
 
-impl MCAuth {
+impl MinecraftAuthenticator {
     pub fn new(client_id: &str) -> Self {
         Self {
             client_id: client_id.into(),
         }
     }
 
-    pub fn get_device_code(&self) -> Result<DeviceCodeSession> {
+    pub fn start_device_flow(&self) -> Result<DeviceFlowState> {
         let param = json!({
-            "client_id":self.client_id,
-            "scope":"XboxLive.signin offline_access"
+            "client_id": self.client_id,
+            "scope": "XboxLive.signin offline_access"
         });
         let client = reqwest::blocking::Client::new();
         let res = client
             .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode")
             .form(&param)
             .send()?;
-        trace!("device code response :{:#?}", res);
-        let res = res.json::<DeviceCodeResponse>()?;
-        Ok(DeviceCodeSession {
-            device_code_response: res,
+        trace!("device code response: {:#?}", res);
+        let initial_response = res.json::<DeviceCodeResponse>()?;
+        Ok(DeviceFlowState {
+            initial_response,
             client_id: self.client_id.to_owned(),
         })
     }
 
     /// Complete OAuth flow from device code to final Minecraft authentication
     pub fn authenticate(&self) -> Result<MinecraftAuth> {
-        // Step 1: Get device code
-        let device_code_session = self.get_device_code()?;
-        info!("{}", device_code_session.device_code_response.message);
+        // Step 1: Start device flow
+        let device_flow_state = self.start_device_flow()?;
+        info!("{}", device_flow_state.initial_response.message);
 
-        // Step 2: Poll for token
-        let token_session = device_code_session.poll_for_token()?;
+        // Step 2: Wait for token
+        let token_state = device_flow_state.wait_for_token()?;
         info!("Got access token");
 
-        // Step 3: Authenticate with Xbox Live
-        let xbox_live_session = token_session.authenticate_xbox_live()?;
+        // Step 3: Request Xbox Live token
+        let xbox_live_state = token_state.request_xbox_token()?;
         info!("Authenticated with Xbox Live");
 
-        // Step 4: Get XSTS token
-        let xsts_session = xbox_live_session.get_xsts_token()?;
+        // Step 4: Request XSTS token
+        let xsts_state = xbox_live_state.request_xsts_token()?;
         info!("Got XSTS token");
 
-        // Step 5: Authenticate with Minecraft
-        let mc_auth_session = xsts_session.authenticate_minecraft()?;
+        // Step 5: Request Minecraft token
+        let minecraft_state = xsts_state.request_minecraft_token()?;
         info!("Authenticated with Minecraft");
 
-        // Step 6: Get Minecraft profile
-        let profile = mc_auth_session.get_minecraft_profile()?;
+        // Step 6: Fetch Minecraft profile
+        let profile = minecraft_state.fetch_minecraft_profile()?;
         info!("Got Minecraft profile: {}", profile.name);
 
         Ok(MinecraftAuth {
-            access_token: mc_auth_session.minecraft_auth_response.access_token,
+            access_token: minecraft_state.minecraft_token_data.access_token,
             profile,
         })
     }
 }
 
-impl MCAuth {
+impl MinecraftAuthenticator {
     pub fn from_compile_env() -> Self {
         Self {
             client_id: env!("AZURE_CLIENT_ID").to_string(),
@@ -87,13 +87,13 @@ pub struct DeviceCodeResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeviceCodeSession {
-    pub device_code_response: DeviceCodeResponse,
+pub struct DeviceFlowState {
+    pub initial_response: DeviceCodeResponse,
     pub client_id: String,
 }
 
-impl DeviceCodeSession {
-    pub fn poll_for_token(&self) -> Result<TokenSession> {
+impl DeviceFlowState {
+    pub fn wait_for_token(&self) -> Result<TokenState> {
         let client = reqwest::blocking::Client::new();
         let max_attempts = 30; // Maximum number of polling attempts
         let mut attempts = 0;
@@ -102,7 +102,7 @@ impl DeviceCodeSession {
             let param = json!({
                 "client_id": self.client_id,
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-                "device_code": self.device_code_response.device_code,
+                "device_code": self.initial_response.device_code,
             });
 
             let res = client
@@ -112,8 +112,8 @@ impl DeviceCodeSession {
 
             if res.status().is_success() {
                 trace!("token response: {:#?}", res);
-                return Ok(TokenSession {
-                    token_response: res.json::<TokenResponse>()?,
+                return Ok(TokenState {
+                    token_data: res.json::<TokenResponse>()?,
                 });
             } else {
                 let error_response: TokenErrorResponse = res.json()?;
@@ -121,7 +121,7 @@ impl DeviceCodeSession {
                     "authorization_pending" => {
                         // Still waiting for user to complete authentication
                         thread::sleep(Duration::from_secs(
-                            self.device_code_response.interval as u64,
+                            self.initial_response.interval as u64,
                         ));
                         attempts += 1;
                         if attempts >= max_attempts {
@@ -167,18 +167,18 @@ struct TokenErrorResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct TokenSession {
-    pub token_response: TokenResponse,
+pub struct TokenState {
+    pub token_data: TokenResponse,
 }
 
-impl TokenSession {
-    /// Authenticate with Xbox Live using Microsoft access token
-    pub fn authenticate_xbox_live(&self) -> Result<XboxLiveAuthSession> {
+impl TokenState {
+    /// Request Xbox Live token using Microsoft access token
+    pub fn request_xbox_token(&self) -> Result<XboxLiveAuthState> {
         let auth_request = json!({
             "Properties": {
                 "AuthMethod": "RPS",
                 "SiteName": "user.auth.xboxlive.com",
-                "RpsTicket": format!("d={}",self.token_response.access_token)
+                "RpsTicket": format!("d={}", self.token_data.access_token)
             },
             "RelyingParty": "http://auth.xboxlive.com",
             "TokenType": "JWT"
@@ -192,11 +192,9 @@ impl TokenSession {
             .send()?;
 
         trace!("Xbox Live auth response: {:#?}", res);
-        let auth_response = res.json::<XboxLiveAuthResponse>()?;
+        let xbox_auth_data = res.json::<XboxLiveAuthResponse>()?;
 
-        Ok(XboxLiveAuthSession {
-            xbox_live_auth_response: auth_response,
-        })
+        Ok(XboxLiveAuthState { xbox_auth_data })
     }
 }
 
@@ -220,17 +218,17 @@ pub struct XuiClaim {
 }
 
 #[derive(Debug, Clone)]
-pub struct XboxLiveAuthSession {
-    pub xbox_live_auth_response: XboxLiveAuthResponse,
+pub struct XboxLiveAuthState {
+    pub xbox_auth_data: XboxLiveAuthResponse,
 }
 
-impl XboxLiveAuthSession {
-    pub fn get_xsts_token(&self) -> Result<XSTSAuthSession> {
+impl XboxLiveAuthState {
+    pub fn request_xsts_token(&self) -> Result<XSTSAuthState> {
         let auth_request = json!({
             "Properties": {
                 "SandboxId": "RETAIL",
                 "UserTokens": [
-                    self.xbox_live_auth_response.token
+                    self.xbox_auth_data.token
                 ]
             },
             "RelyingParty": "rp://api.minecraftservices.com/",
@@ -264,8 +262,8 @@ impl XboxLiveAuthSession {
             ));
         }
 
-        Ok(XSTSAuthSession {
-            xsts_auth_response: res.json::<XSTSAuthResponse>()?,
+        Ok(XSTSAuthState {
+            xsts_token_data: res.json::<XSTSAuthResponse>()?,
         })
     }
 
@@ -292,14 +290,18 @@ pub struct XSTSAuthResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct XSTSAuthSession {
-    pub xsts_auth_response: XSTSAuthResponse,
+pub struct XSTSAuthState {
+    pub xsts_token_data: XSTSAuthResponse,
 }
 
-impl XSTSAuthSession {
-    pub fn authenticate_minecraft(&self) -> Result<MineCraftAuthSession> {
+impl XSTSAuthState {
+    pub fn request_minecraft_token(&self) -> Result<MinecraftAuthState> {
         let auth_request = json!({
-            "identityToken": format!("XBL3.0 x={};{}", self.xsts_auth_response.display_claims.xui[0].uhs, self.xsts_auth_response.token)
+            "identityToken": format!(
+                "XBL3.0 x={};{}",
+                self.xsts_token_data.display_claims.xui[0].uhs,
+                self.xsts_token_data.token
+            )
         });
 
         let client = reqwest::blocking::Client::new();
@@ -313,8 +315,8 @@ impl XSTSAuthSession {
             return Err(anyhow!("Minecraft authentication failed: {}", res.status()));
         }
 
-        Ok(MineCraftAuthSession {
-            minecraft_auth_response: res.json::<MinecraftAuthResponse>()?,
+        Ok(MinecraftAuthState {
+            minecraft_token_data: res.json::<MinecraftAuthResponse>()?,
         })
     }
 }
@@ -329,18 +331,18 @@ pub struct MinecraftAuthResponse {
 }
 
 #[derive(Debug, Clone)]
-pub struct MineCraftAuthSession {
-    pub minecraft_auth_response: MinecraftAuthResponse,
+pub struct MinecraftAuthState {
+    pub minecraft_token_data: MinecraftAuthResponse,
 }
 
-impl MineCraftAuthSession {
-    pub fn get_minecraft_profile(&self) -> Result<MinecraftProfile> {
+impl MinecraftAuthState {
+    pub fn fetch_minecraft_profile(&self) -> Result<MinecraftProfile> {
         let client = reqwest::blocking::Client::new();
         let res = client
             .get("https://api.minecraftservices.com/minecraft/profile")
             .header(
                 "Authorization",
-                format!("Bearer {}", self.minecraft_auth_response.access_token),
+                format!("Bearer {}", self.minecraft_token_data.access_token),
             )
             .send()?;
 
