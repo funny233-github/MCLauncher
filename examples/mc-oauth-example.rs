@@ -1,5 +1,5 @@
 use anyhow::Result;
-use mc_oauth::MCAuth;
+use mc_oauth::MinecraftAuthenticator;
 
 /// Example demonstrating the complete Minecraft OAuth authentication flow
 ///
@@ -14,7 +14,7 @@ fn main() -> Result<()> {
     // Initialize logger
     env_logger::init();
 
-    let res = MCAuth::from_compile_env().authenticate()?;
+    let res = MinecraftAuthenticator::from_compile_env().authenticate()?;
     log::debug!("profile: {:#?}", res);
 
     Ok(())
