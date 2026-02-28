@@ -86,7 +86,7 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
 
     println!("fetching version...");
     let mut version = Version::fetch(
-        manifest,
+        &manifest,
         &config.game_version,
         &config.mirror.version_manifest,
     )?;
@@ -99,8 +99,8 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
         println!("fetching fabric profile...");
         let game_version = Cow::from(&config.game_version);
         let loader_version = Cow::from(v);
-        let profile = Profile::fetch(&config.mirror.fabric_meta, game_version, loader_version)?;
-        version.merge(profile)
+        let profile = Profile::fetch(&config.mirror.fabric_meta, &game_version, &loader_version)?;
+        version.merge(&profile)
     }
     Ok(version)
 }
@@ -178,7 +178,7 @@ fn test_libraries_installtask() {
     let game_dir = "test_dir/";
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
     let fabric_mirror = "https://bmclapi2.bangbang93.com/maven/";
-    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let version_json = Version::fetch(&manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks =
         libraries_installtask(game_dir, libraries_mirror, fabric_mirror, &version_json).unwrap();
     assert!(!tasks.is_empty());
@@ -232,7 +232,7 @@ fn test_native_installtask() {
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
     let libraries_mirror = "https://bmclapi2.bangbang93.com/maven/";
-    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let version_json = Version::fetch(&manifest, "1.16.5", manifest_mirror).unwrap();
     let tasks = native_installtask(game_dir, libraries_mirror, &version_json).unwrap();
     assert!(!tasks.is_empty());
 }
@@ -316,7 +316,7 @@ fn test_client_installtask() {
     let game_dir = "test_dir/";
     let game_version = "1.16.5";
     let client_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let version_json = Version::fetch(&manifest, "1.16.5", manifest_mirror).unwrap();
     let task = client_installtask(game_dir, game_version, client_mirror, &version_json);
     assert!(task.is_ok());
 }
@@ -356,7 +356,7 @@ fn test_assets_installtask() {
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
     let assets_mirror = "https://bmclapi2.bangbang93.com/";
-    let version_json = Version::fetch(manifest, "1.16.5", manifest_mirror).unwrap();
+    let version_json = Version::fetch(&manifest, "1.16.5", manifest_mirror).unwrap();
     let assets_json = Assets::fetch(&version_json.asset_index, assets_mirror).unwrap();
     let task = assets_installtask(game_dir, assets_mirror, &assets_json);
     assert!(!task.unwrap().is_empty());

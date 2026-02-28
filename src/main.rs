@@ -153,7 +153,7 @@ fn handle_args() -> anyhow::Result<()> {
                     limit: list_limit,
                 } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
-                        .list(version_type.into());
+                        .list(&version_type.into());
                     print_version_list("Minecraft", &list, list_limit)?;
                 }
                 ListSub::Loader {
