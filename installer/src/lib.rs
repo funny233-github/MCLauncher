@@ -544,90 +544,90 @@ impl<T> TaskPool<T>
 where
     T: FileInstall + std::marker::Send + std::marker::Sync + Clone,
 {
-/// Executes all installation tasks concurrently.
-///
-/// This method processes all tasks in the pool with the following characteristics:
-///
-/// # Execution Model
-///
-/// - Tasks are executed concurrently with a buffer of 64 parallel operations
-/// - Each task runs in its own async context
-/// - Progress is updated in real-time as tasks complete
-///
-/// # Concurrency
-///
-/// - Up to 64 tasks execute simultaneously
-/// - Tasks are pulled from the deque as they complete
-/// - This provides optimal throughput for I/O-bound operations
-///
-/// # Progress Tracking
-///
-/// - Progress bar updates as each task completes
-/// - Task messages are displayed in the progress bar
-/// - Progress bar shows elapsed time, progress bar, and task count
-///
-/// # Error Handling
-///
-/// - Errors in individual tasks are logged but do not stop the overall process
-/// - The method completes when all tasks are finished, regardless of individual failures
-/// - Use proper logging to monitor task-specific errors
-///
-/// # Panics
-///
-/// This method may panic if:
-/// - Task installation fails (rare, as errors are handled in `install`)
-/// - Progress bar update fails
-///
-/// # Blocking Behavior
-///
-/// This method is marked with `#[tokio::main(flavor = "current_thread")]`, which means:
-/// - It creates a new tokio runtime in the current thread
-/// - It blocks until all tasks complete
-/// - It's designed to be called from outside an async context
-///
-/// # Example
-///
-/// ```no_run
-/// use installer::{InstallTask, TaskPool};
-/// use std::collections::VecDeque;
-/// use std::path::PathBuf;
-///
-/// let tasks = VecDeque::from(vec![
-///     InstallTask {
-///         url: "https://example.com/mod1.jar".to_string(),
-///         sha1: Some("abc123...".to_string()),
-///         save_file: PathBuf::from("./mods/mod1.jar"),
-///         message: "Downloading mod1.jar".to_string(),
-///     },
-///     InstallTask {
-///         url: "https://example.com/mod2.jar".to_string(),
-///         sha1: Some("def456...".to_string()),
-///         save_file: PathBuf::from("./mods/mod2.jar"),
-///         message: "Downloading mod2.jar".to_string(),
-///     },
-/// ]);
-///
-/// let pool = TaskPool::from(tasks);
-/// pool.install().await; // Blocks until all tasks complete
-/// ```
-///
-/// # Performance Considerations
-///
-/// - The default concurrency of 64 is optimal for most network I/O operations
-/// - For CPU-bound tasks, consider reducing the buffer size
-/// - For very large numbers of tasks, consider batching
-#[tokio::main(flavor = "current_thread")]
-pub async fn install(self) {
-    let tasks = self.pool.into_iter().map(|x| {
-        let share = self.bar.clone();
-        async move {
-            x.install().await.unwrap();
-            x.bar_update(&share);
-        }
-    });
-    stream::iter(tasks)
-        .buffer_unordered(64)
-        .collect::<VecDeque<_>>()
-        .await;
-}
+    /// Executes all installation tasks concurrently.
+    ///
+    /// This method processes all tasks in the pool with the following characteristics:
+    ///
+    /// # Execution Model
+    ///
+    /// - Tasks are executed concurrently with a buffer of 64 parallel operations
+    /// - Each task runs in its own async context
+    /// - Progress is updated in real-time as tasks complete
+    ///
+    /// # Concurrency
+    ///
+    /// - Up to 64 tasks execute simultaneously
+    /// - Tasks are pulled from the deque as they complete
+    /// - This provides optimal throughput for I/O-bound operations
+    ///
+    /// # Progress Tracking
+    ///
+    /// - Progress bar updates as each task completes
+    /// - Task messages are displayed in the progress bar
+    /// - Progress bar shows elapsed time, progress bar, and task count
+    ///
+    /// # Error Handling
+    ///
+    /// - Errors in individual tasks are logged but do not stop the overall process
+    /// - The method completes when all tasks are finished, regardless of individual failures
+    /// - Use proper logging to monitor task-specific errors
+    ///
+    /// # Panics
+    ///
+    /// This method may panic if:
+    /// - Task installation fails (rare, as errors are handled in `install`)
+    /// - Progress bar update fails
+    ///
+    /// # Blocking Behavior
+    ///
+    /// This method is marked with `#[tokio::main(flavor = "current_thread")]`, which means:
+    /// - It creates a new tokio runtime in the current thread
+    /// - It blocks until all tasks complete
+    /// - It's designed to be called from outside an async context
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use installer::{InstallTask, TaskPool};
+    /// use std::collections::VecDeque;
+    /// use std::path::PathBuf;
+    ///
+    /// let tasks = VecDeque::from(vec![
+    ///     InstallTask {
+    ///         url: "https://example.com/mod1.jar".to_string(),
+    ///         sha1: Some("abc123...".to_string()),
+    ///         save_file: PathBuf::from("./mods/mod1.jar"),
+    ///         message: "Downloading mod1.jar".to_string(),
+    ///     },
+    ///     InstallTask {
+    ///         url: "https://example.com/mod2.jar".to_string(),
+    ///         sha1: Some("def456...".to_string()),
+    ///         save_file: PathBuf::from("./mods/mod2.jar"),
+    ///         message: "Downloading mod2.jar".to_string(),
+    ///     },
+    /// ]);
+    ///
+    /// let pool = TaskPool::from(tasks);
+    /// pool.install().await; // Blocks until all tasks complete
+    /// ```
+    ///
+    /// # Performance Considerations
+    ///
+    /// - The default concurrency of 64 is optimal for most network I/O operations
+    /// - For CPU-bound tasks, consider reducing the buffer size
+    /// - For very large numbers of tasks, consider batching
+    #[tokio::main(flavor = "current_thread")]
+    pub async fn install(self) {
+        let tasks = self.pool.into_iter().map(|x| {
+            let share = self.bar.clone();
+            async move {
+                x.install().await.unwrap();
+                x.bar_update(&share);
+            }
+        });
+        stream::iter(tasks)
+            .buffer_unordered(64)
+            .collect::<VecDeque<_>>()
+            .await;
+    }
 }
