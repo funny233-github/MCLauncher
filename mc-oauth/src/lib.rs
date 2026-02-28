@@ -53,8 +53,6 @@
 //! - Comprehensive error messages for debugging
 //! - Token validation and expiry handling
 
-#![allow(clippy::pedantic)]
-
 use anyhow::{Result, anyhow};
 use log::{debug, info, trace};
 use serde::{Deserialize, Serialize};
