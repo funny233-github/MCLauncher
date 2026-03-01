@@ -9,7 +9,7 @@
 //! - **Concurrent Downloads**: Download multiple files simultaneously with configurable concurrency
 //! - **Progress Tracking**: Visual progress bars showing download status and progress
 //! - **Integrity Verification**: SHA1 hash verification to ensure file integrity
-//! - **Retry Logic**: Automatic retries with exponential backoff for failed downloads
+//! - **Retry Logic**: Automatic retries for failed downloads (up to 5 attempts with 3 second delay)
 //! - **Incremental Updates**: Skip downloading files that already exist with matching hashes
 //! - **Error Handling**: Comprehensive error handling for network and filesystem operations
 //!
@@ -27,8 +27,7 @@
 //! use std::collections::VecDeque;
 //! use std::path::PathBuf;
 //!
-//! #[tokio::main]
-//! async fn main() -> anyhow::Result<()> {
+//! fn main() -> anyhow::Result<()> {
 //!     // Create installation tasks
 //!     let tasks = VecDeque::from(vec![
 //!         InstallTask {
@@ -47,7 +46,7 @@
 //!
 //!     // Create task pool and install all files
 //!     let pool = TaskPool::from(tasks);
-//!     pool.install().await;
+//!     pool.install();
 //!
 //!     Ok(())
 //! }
@@ -73,7 +72,7 @@
 //!
 //! - Files are downloaded concurrently (64 parallel downloads by default)
 //! - Progress is updated in real-time for each task
-//! - Errors are handled gracefully per task
+//! - Errors in individual tasks will cause the entire installation to panic
 //!
 //! # Error Handling
 //!
@@ -207,7 +206,7 @@ pub trait FileInstall {
 ///     _ => println!("Hash does not match"),
 /// }
 /// ```
-trait ShaCompare {
+pub trait ShaCompare {
     /// Compare the SHA1 hash of self with the expected hash.
     ///
     /// Computes the SHA1 hash of the data and compares it with the expected hash.
@@ -340,8 +339,8 @@ pub struct InstallTask {
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
 ///     let data = fetch_bytes(
-///         &"https://example.com/file.dat".to_string(),
-///         Some(&"abc123...".to_string()),
+///         "https://example.com/file.dat",
+///         Some(&"abc123...".into()),
 ///         Duration::from_secs(3),
 ///         5,
 ///     ).await?;
@@ -349,8 +348,13 @@ pub struct InstallTask {
 ///     Ok(())
 /// }
 /// ```
-async fn fetch_bytes(
-    url: &String,
+///
+/// # Panics
+///
+/// This function does not panic. All error conditions are handled and returned
+/// via the `Result` type.
+pub async fn fetch_bytes(
+    url: &str,
     sha1: Option<&String>,
     sleep_time: Duration,
     retry_num: u32,
@@ -408,20 +412,18 @@ impl FileInstall for InstallTask {
     /// # Panics
     ///
     /// Panics if:
-    /// - Parent directory creation fails (unreachable in practice due to retry logic)
-    /// - File writing fails (unreachable in practice due to retry logic)
+    /// - The file path has no parent directory (e.g., a root path or path with no directory component)
     async fn install(&self) -> anyhow::Result<()> {
         if self.sha1.is_none()
             || !(self.save_file.exists()
-                && fs::read(&self.save_file)
-                    .unwrap()
+                && fs::read(&self.save_file)?
                     .sha1_cmp(self.sha1.as_ref().unwrap())
                     .is_eq())
         {
             let data =
                 fetch_bytes(&self.url, self.sha1.as_ref(), Duration::from_secs(3), 5).await?;
-            fs::create_dir_all(self.save_file.parent().unwrap()).unwrap();
-            fs::write(&self.save_file, data).unwrap();
+            fs::create_dir_all(self.save_file.parent().unwrap())?;
+            fs::write(&self.save_file, data)?;
         }
         Ok(())
     }
@@ -459,7 +461,7 @@ impl FileInstall for InstallTask {
 /// - **Concurrent Execution**: Tasks are executed with configurable concurrency (64 by default)
 /// - **Progress Tracking**: Visual progress bar with elapsed time and task messages
 /// - **Thread Safety**: All tasks are executed safely in parallel
-/// - **Error Handling**: Errors in individual tasks are handled gracefully
+/// - **Error Handling**: Errors in individual tasks will cause the entire installation to panic
 ///
 /// # Example
 ///
@@ -468,8 +470,7 @@ impl FileInstall for InstallTask {
 /// use std::collections::VecDeque;
 /// use std::path::PathBuf;
 ///
-/// #[tokio::main]
-/// async fn main() {
+/// fn main() {
 ///     let tasks = VecDeque::from(vec![
 ///         InstallTask {
 ///             url: "https://example.com/mod1.jar".to_string(),
@@ -480,7 +481,7 @@ impl FileInstall for InstallTask {
 ///     ]);
 ///
 ///     let pool = TaskPool::from(tasks);
-///     pool.install().await; // Blocks until all tasks complete
+///     pool.install(); // Blocks until all tasks complete
 /// }
 /// ```
 #[derive(Debug, Clone)]
@@ -568,14 +569,14 @@ where
     ///
     /// # Error Handling
     ///
-    /// - Errors in individual tasks are logged but do not stop the overall process
-    /// - The method completes when all tasks are finished, regardless of individual failures
-    /// - Use proper logging to monitor task-specific errors
+    /// - Errors in individual tasks cause the entire installation to panic
+    /// - This method does not handle errors gracefully; any task failure will abort the process
+    /// - For error-tolerant behavior, implement custom error handling in your task types
     ///
     /// # Panics
     ///
-    /// This method may panic if:
-    /// - Task installation fails (rare, as errors are handled in `install`)
+    /// This method will panic if:
+    /// - Any task's `install` method returns an error
     /// - Progress bar update fails
     ///
     /// # Blocking Behavior
@@ -608,7 +609,7 @@ where
     /// ]);
     ///
     /// let pool = TaskPool::from(tasks);
-    /// pool.install().await; // Blocks until all tasks complete
+    /// pool.install(); // Blocks until all tasks complete
     /// ```
     ///
     /// # Performance Considerations
