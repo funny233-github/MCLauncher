@@ -288,7 +288,7 @@ pub trait Sha1Compare {
 /// ```
 /// use mc_api::DomainReplacer;
 ///
-/// let original = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+/// let original = "https://launchermeta.mojang.com/mc/game/version_manifest.json".to_string();
 /// let mirror = "https://bmclapi2.bangbang93.com/";
 ///
 /// let replaced = original.replace_domain(mirror);

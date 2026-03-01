@@ -97,7 +97,7 @@
 //! let manifest = VersionManifest::fetch(manifest_mirror)?;
 //!
 //! let mut version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
-//! let mod_profile = /* fetch mod loader profile */;
+//! # Ok::<(), anyhow::Error>(())
 //!
 
 use super::{DomainReplacer, Sha1Compare};
@@ -181,7 +181,7 @@ pub enum VersionType {
 ///     url: "https://libraries.minecraft.net/org/lwjgl/lwjgl/3.3.1/lwjgl-3.3.1.jar".to_string(),
 /// };
 /// ```
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Artifact {
     pub path: String,
     pub sha1: Option<String>,
@@ -221,7 +221,7 @@ pub struct Artifact {
 ///     classifiers: None,
 /// };
 /// ```
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct LibDownloads {
     pub artifact: Artifact,
     pub classifiers: Option<HashMap<String, Artifact>>,
@@ -289,6 +289,8 @@ pub struct Rules {
 /// ```
 /// use mc_api::official::Library;
 ///
+/// let library  = Library::default();
+///
 /// // Check if library is needed for current platform
 /// if library.is_target_lib() {
 ///     println!("Library {} is needed", library.name);
@@ -299,7 +301,7 @@ pub struct Rules {
 ///     println!("Library {} is a native library", library.name);
 /// }
 /// ```
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Library {
     pub downloads: LibDownloads,
     pub name: String,
@@ -338,7 +340,7 @@ impl Library {
     ///
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
-    /// let version = Version::fetch(manifest, "1.20.4", manifest_mirror)?;
+    /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
     /// // Get only libraries needed for current platform
     /// let target_libs: Vec<_> = version.libraries.iter()
@@ -346,7 +348,7 @@ impl Library {
     ///     .map(|lib| lib.name.clone())
     ///     .collect();
     ///
-    /// println!(\"Libraries needed: {}\", target_libs.len());
+    /// println!("Libraries needed: {}", target_libs.len());
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     ///
@@ -390,7 +392,7 @@ impl Library {
     ///
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
-    /// let version = Version::fetch(manifest, "1.20.4", manifest_mirror)?;
+    /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
     /// // Get only native libraries for current platform
     /// let native_libs: Vec<_> = version.libraries.iter()
@@ -398,7 +400,7 @@ impl Library {
     ///     .map(|lib| lib.name.clone())
     ///     .collect();
     ///
-    /// println!(\"Native libraries needed: {}\", native_libs.len());
+    /// println!("Native libraries needed: {}", native_libs.len());
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     #[must_use]
@@ -764,13 +766,13 @@ pub struct Asset {
 /// use mc_api::official::Assets;
 /// use std::path::PathBuf;
 ///
-/// let assets = Assets { /* ... */ };
+/// let assets = Assets::default();
 ///
 /// // Install the assets index file
 /// let path = PathBuf::from("./assets/indexes/1.20.4.json");
 /// assets.install(&path);
 /// ```
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Assets {
     pub objects: HashMap<String, Asset>,
 }
@@ -1016,11 +1018,13 @@ pub struct Version {
 ///
 /// ```no_run
 /// use mc_api::official::{VersionManifest, Version, MergeVersion};
+/// use mc_api::fabric::Profile;
 ///
 /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
+/// let fabric_mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
 /// let manifest = VersionManifest::fetch(manifest_mirror)?;
 /// let mut version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
-/// let mod_profile = /* fetch mod profile */;
+/// let mod_profile = Profile::fetch(fabric_mirror,"1.20.4","0.15.10")?;
 ///
 /// // Merge mod profile into official version
 /// version.merge(&mod_profile);
@@ -1032,7 +1036,7 @@ pub trait MergeVersion {
     /// Returns mod loader-specific libraries compatible with the official format.
     ///
     /// This method should return the libraries that the mod loader requires,
-   /// converted to the official library format.
+    /// converted to the official library format.
     ///
     /// # Returns
     ///

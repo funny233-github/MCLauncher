@@ -170,7 +170,7 @@ impl Game {
 /// ```no_run
 /// use mc_api::fabric::Yarn;
 ///
-    /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
+/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
 /// let yarns = Yarn::fetch(mirror)?;
 ///
 /// // Find Yarn mappings for a specific version
@@ -327,7 +327,7 @@ impl Loader {
 ///
 /// # Example
 ///
-    /// ```no_run
+/// ```no_run
 /// use mc_api::fabric::Intermediary;
 ///
 /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
@@ -422,7 +422,7 @@ pub struct Installer {
 ///
 /// # Example
 ///
-    /// ```no_run
+/// ```no_run
 /// use mc_api::fabric::Versions;
 ///
 /// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
@@ -571,16 +571,6 @@ impl From<Library> for official::Library {
 ///
 /// Returns the file path in the format: `groupId/path/artifactId/version/artifactId-version.jar`
 ///
-/// # Example
-///
-/// ```
-/// use mc_api::fabric::to_path;
-///
-/// let name = "net.fabricmc:sponge-mixin:0.13.3+mixin.0.8.5";
-/// let path = to_path(name);
-/// assert_eq!(path, "net/fabricmc/sponge-mixin/0.13.3+mixin.0.8.5/sponge-mixin-0.13.3+mixin.0.8.5.jar");
-/// ```
-///
 /// # Format Details
 ///
 /// The transformation follows these rules:
@@ -657,17 +647,17 @@ fn test_name_to_path() {
 /// merged with official Minecraft versions for complete modded game installations.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Profile {
-    id: String,
+    pub id: String,
     #[serde(rename = "inheritsFrom")]
-    inherits_from: String,
+    pub inherits_from: String,
     #[serde(rename = "releaseTime")]
-    release_time: String,
-    time: String,
-    r#type: String,
+    pub release_time: String,
+    pub time: String,
+    pub r#type: String,
     #[serde(rename = "mainClass")]
-    main_class: String,
-    arguments: Arguments,
-    libraries: Vec<Library>,
+    pub main_class: String,
+    pub arguments: Arguments,
+    pub libraries: Vec<Library>,
 }
 
 impl Profile {
