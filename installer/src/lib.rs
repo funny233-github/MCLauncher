@@ -154,11 +154,8 @@ pub trait FileInstall {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - Network operations fail
-    /// - Filesystem operations fail
-    /// - Hash verification fails
-    /// - Permission issues occur
+    /// Returns an error if the installation operation fails.
+    /// The specific error conditions depend on the implementation.
     ///
     /// # Async Context
     ///
@@ -361,14 +358,20 @@ pub async fn fetch_bytes(
 ) -> anyhow::Result<bytes::Bytes> {
     let client = reqwest::Client::new();
     for _ in 0..retry_num {
-        let data = client
+        let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
             .timeout(Duration::from_secs(128))
             .send()
-            .await?
-            .bytes()
             .await;
+
+        // There must handle Result for 'for loop'
+        let data = if let Ok(send) = send {
+            send.bytes().await
+        } else {
+            continue;
+        };
+
         if let Ok(data) = data {
             if sha1.is_none() || data.sha1_cmp(sha1.unwrap()).is_eq() {
                 return Ok(data);
@@ -397,7 +400,7 @@ impl FileInstall for InstallTask {
     ///
     /// # Download Behavior
     ///
-    /// - Downloads with retry logic (5 attempts, 3 second delay between retries)
+    /// - Downloads with retry logic (5 attempts, 10 second delay between retries)
     /// - Creates parent directories if they don't exist
     /// - Writes downloaded data to the target file
     ///
@@ -421,7 +424,7 @@ impl FileInstall for InstallTask {
                     .is_eq())
         {
             let data =
-                fetch_bytes(&self.url, self.sha1.as_ref(), Duration::from_secs(3), 5).await?;
+                fetch_bytes(&self.url, self.sha1.as_ref(), Duration::from_secs(10), 5).await?;
             fs::create_dir_all(self.save_file.parent().unwrap())?;
             fs::write(&self.save_file, data)?;
         }
