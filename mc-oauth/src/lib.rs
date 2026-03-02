@@ -245,7 +245,7 @@ impl MinecraftAuthenticator {
     ///
     /// # Example
     ///
-    /// ```rust,should_panic
+    /// ```rust
     /// // Set AZURE_CLIENT_ID before compilation
     /// use mc_oauth::MinecraftAuthenticator;
     ///
