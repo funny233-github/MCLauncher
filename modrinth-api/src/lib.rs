@@ -200,7 +200,7 @@ impl Versions {
                 )
                 .timeout(Duration::from_secs(100));
             let Ok(send) = init.send() else {
-                std::thread::sleep(Duration::from_secs(3));
+                std::thread::sleep(Duration::from_secs(10));
                 continue;
             };
             match send.json() {
@@ -263,7 +263,7 @@ impl Versions {
                 )
                 .timeout(Duration::from_secs(100));
             let Ok(send) = init.send().await else {
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
                 continue;
             };
 
@@ -498,7 +498,7 @@ impl Projects {
                 .timeout(Duration::from_secs(100));
 
             let Ok(send) = init.send() else {
-                std::thread::sleep(Duration::from_secs(3));
+                std::thread::sleep(Duration::from_secs(10));
                 continue;
             };
 
@@ -571,7 +571,7 @@ impl Projects {
                 .timeout(Duration::from_secs(100));
 
             let Ok(send) = init.send().await else {
-                tokio::time::sleep(Duration::from_secs(3)).await;
+                tokio::time::sleep(Duration::from_secs(10)).await;
                 continue;
             };
 
