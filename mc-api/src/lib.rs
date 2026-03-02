@@ -98,7 +98,7 @@
 //!
 //! Network requests include automatic retry logic:
 //! - Up to 5 retry attempts
-//! - 3 second delay between retries
+//! - 10 second delay between retries
 //! - 100 second timeout per attempt
 //! - Automatic SHA1 verification when hashes are provided
 //!
@@ -136,7 +136,7 @@ use std::cmp::Ordering;
 /// # Retry Behavior
 ///
 /// - Makes up to 5 attempts to fetch the URL
-/// - Waits 3 seconds between retry attempts
+/// - Waits 10 seconds between retry attempts
 /// - Times out after 100 seconds per attempt
 /// - Returns error if all attempts fail
 ///
@@ -189,7 +189,7 @@ macro_rules! fetch {
                 break;
             }
             log::warn!("fetch fail, then retry");
-            std::thread::sleep(std::time::Duration::from_secs(3));
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
         res
     }};
@@ -212,7 +212,7 @@ macro_rules! fetch {
                 }
             }
             log::warn!("fetch fail, then retry");
-            std::thread::sleep(std::time::Duration::from_secs(3));
+            std::thread::sleep(std::time::Duration::from_secs(10));
         }
         res
     }};
@@ -229,8 +229,10 @@ macro_rules! fetch {
 ///
 /// # Comparison
 ///
-/// Returns `Ordering::Equal` if hashes match, `Ordering::Less` if computed hash
-/// is lexicographically less, or `Ordering::Greater` otherwise.
+/// Computes the SHA1 hash of the data and compares it with the expected hash.
+/// The comparison returns an `Ordering` value indicating the relationship between
+/// the computed hash and the expected hash. The specific semantics of the
+/// comparison (e.g., lexicographic ordering) are determined by the implementation.
 ///
 /// # Example
 ///
@@ -254,8 +256,6 @@ pub trait Sha1Compare {
     /// Compare the SHA1 hash of self with the expected hash.
     ///
     /// Computes the SHA1 hash of the data and compares it with the expected hash.
-    /// Returns `Ordering::Equal` if hashes match, `Ordering::Less` if computed hash
-    /// is lexicographically less, or `Ordering::Greater` otherwise.
     ///
     /// # Parameters
     ///
@@ -264,6 +264,7 @@ pub trait Sha1Compare {
     /// # Returns
     ///
     /// Returns an `Ordering` result indicating the comparison outcome.
+    /// The specific semantics of the comparison are determined by the implementation.
     fn sha1_cmp(&self, sha1code: &str) -> Ordering;
 }
 
@@ -377,7 +378,15 @@ impl DomainReplacer<String> for String {
 /// 2. Updates the hasher with the data
 /// 3. Finalizes the hash
 /// 4. Encodes the result as hexadecimal
-/// 5. Compares with the expected hash
+/// 5. Performs lexicographic string comparison with the expected hash
+///
+/// # Comparison Semantics
+///
+/// This implementation performs a lexicographic comparison between the hexadecimal
+/// representation of the computed SHA1 hash and the expected hash string:
+/// - `Ordering::Equal` when hashes match exactly
+/// - `Ordering::Less` when the computed hash is lexicographically less
+/// - `Ordering::Greater` when the computed hash is lexicographically greater
 ///
 /// # Cryptographic Considerations
 ///
