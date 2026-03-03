@@ -46,8 +46,18 @@ pub enum InstallType {
     Mods,
 }
 
+/// Installs Minecraft game files and libraries.
+///
+/// Downloads the version manifest, libraries, and assets needed to run
+/// the specified Minecraft version with optional Fabric loader.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Version manifest cannot be downloaded or parsed
+/// - Libraries cannot be downloaded
+/// - Assets cannot be downloaded
+/// - Native libraries cannot be extracted
+/// - File system operations fail
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let version_json_file_path = Path::new(&config.game_dir)
         .join("versions")

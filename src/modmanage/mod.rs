@@ -44,8 +44,17 @@ fn filter_versions(
     }
 }
 
+/// Fetches available versions of a mod from Modrinth.
+///
+/// Retrieves version information for the specified mod name, optionally
+/// filtering by version. Returns versions that are compatible with the
+/// configured game version.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Network request to Modrinth fails
+/// - No compatible versions are found
+/// - Response cannot be parsed
 pub async fn fetch_version(
     name: &str,
     version: Option<&String>,
@@ -55,8 +64,16 @@ pub async fn fetch_version(
     filter_versions(versions, version, config, name)
 }
 
+/// Fetches available versions of a mod from Modrinth (blocking).
+///
+/// Blocking version of `fetch_version` that runs synchronously instead of
+/// using async/await.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Network request to Modrinth fails
+/// - No compatible versions are found
+/// - Response cannot be parsed
 pub fn fetch_version_blocking(
     name: &str,
     version: Option<&String>,
@@ -66,8 +83,18 @@ pub fn fetch_version_blocking(
     filter_versions(versions, version, config, name)
 }
 
+/// Adds a mod to the configuration.
+///
+/// Either adds a local mod file or downloads a mod from Modrinth.
+/// Optionally installs the mod files to the game directory.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read or written
+/// - Mod file cannot be found (for local mods)
+/// - Network request to Modrinth fails (for remote mods)
+/// - No compatible versions are found
+/// - Mod installation fails
 pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     let message = if local {
@@ -87,8 +114,16 @@ pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool)
     Ok(())
 }
 
+/// Removes a mod from the configuration.
+///
+/// Deletes the mod entry from both config.toml and config.lock,
+/// and removes the mod file from the game directory.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read or written
+/// - Mod is not found in configuration
+/// - Mod file cannot be removed
 pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
@@ -97,8 +132,17 @@ pub fn remove(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Updates all mods in the configuration.
+///
+/// Fetches the latest versions of all configured mods and updates
+/// the configuration. Optionally installs the updated mod files.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read or written
+/// - Network requests to Modrinth fail
+/// - No compatible versions are found for any mod
+/// - Mod installation fails
 pub fn update(config_only: bool) -> Result<()> {
     sync_or_update(false)?;
     if !config_only {
@@ -137,8 +181,17 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
         .collect()
 }
 
+/// Installs all configured mods.
+///
+/// Downloads and installs all mods listed in the configuration
+/// that are compatible with the current game version.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read
+/// - No mods are configured
+/// - Mod download fails
+/// - File system operations fail
 pub fn install() -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
@@ -165,8 +218,17 @@ pub fn install() -> Result<()> {
     Ok(())
 }
 
+/// Syncs all mods to their configured versions.
+///
+/// Ensures all mods in the configuration are at the exact versions
+/// specified in config.toml. Optionally installs the synced mod files.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read or written
+/// - Network requests to Modrinth fail
+/// - No compatible versions are found for any mod
+/// - Mod installation fails
 pub fn sync(config_only: bool) -> Result<()> {
     sync_or_update(true)?;
     if !config_only {
@@ -348,8 +410,17 @@ fn clean_file_mods() -> Result<()> {
     Ok(())
 }
 
+/// Cleans up unused mod files.
+///
+/// Removes mod entries from config.lock that are not in config.toml,
+/// and deletes any mod files in the mods directory that are marked
+/// as unused (have a .unuse extension).
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read or written
+/// - File system operations fail
+/// - Files cannot be removed
 pub fn clean() -> Result<()> {
     clean_locked_config_mods()?;
     clean_file_mods()?;
@@ -363,8 +434,17 @@ struct HitsInfo {
     description: String,
 }
 
+/// Searches for mods on Modrinth.
+///
+/// Searches for mods by name and filters results to only show
+/// mods that are compatible with the configured game version and loader.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Configuration cannot be read
+/// - Network request to Modrinth fails
+/// - No loader is configured
+/// - Response cannot be parsed
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 

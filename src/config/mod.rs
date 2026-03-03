@@ -1,3 +1,42 @@
+//! # Configuration Management Module
+//!
+//! This module provides comprehensive configuration management for the Minecraft launcher.
+//! It handles runtime configuration, locked configuration for mod management, and user
+//! account information.
+//!
+//! ## Main Components
+//!
+//! - [`RuntimeConfig`]: User-editable configuration for game settings, mods, and launch options
+//! - [`LockedConfig`]: Auto-generated configuration with locked mod versions and file information
+//! - [`UserAccount`]: User authentication information (offline or Microsoft)
+//! - [`ConfigHandler`]: Main handler for reading, writing, and managing all configurations
+//!
+//! ## Configuration Files
+//!
+//! The module manages three TOML files:
+//! - `config.toml`: User-editable runtime configuration
+//! - `config.lock`: Auto-generated locked configuration with exact mod versions
+//! - `account.toml`: User account and authentication information
+//!
+//! ## Example Usage
+//!
+//! ```no_run
+//! use launcher::config::ConfigHandler;
+//!
+//! // Read configuration with default paths
+//! let mut config = ConfigHandler::read()?;
+//!
+//! // Access game version
+//! println!("Game version: {}", config.config().game_version);
+//!
+//! // Add a mod
+//! config.add_mod_local("fabric-api.jar")?;
+//!
+//! // Write changes
+//! config.write_all()?;
+//! # Ok::<(), anyhow::Error>(())
+//! ```
+
 use crate::modmanage::{fetch_version, fetch_version_blocking};
 use anyhow::Result;
 use clap::Subcommand;
@@ -13,6 +52,10 @@ use uuid::Uuid;
 use walkdir::WalkDir;
 
 // runtime config
+/// Mirror URLs for downloading Minecraft resources.
+///
+/// Contains endpoints for downloading version manifests, assets, client files,
+/// libraries, and Fabric loader components from various mirror sources.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MCMirror {
     pub version_manifest: String,
@@ -24,6 +67,10 @@ pub struct MCMirror {
 }
 
 impl MCMirror {
+    /// Creates a new mirror configuration using official Mojang servers.
+    ///
+    /// Uses the official Minecraft download servers and Fabric Maven repository.
+    /// This provides the most stable and up-to-date downloads.
     #[must_use]
     pub fn official_mirror() -> Self {
         MCMirror {
@@ -36,6 +83,10 @@ impl MCMirror {
         }
     }
 
+    /// Creates a new mirror configuration using BMCLAPI (Bangbang93) servers.
+    ///
+    /// Uses BMCLAPI servers in China, which provide faster download speeds
+    /// for Chinese users due to domestic mirrors.
     #[must_use]
     pub fn bmcl_mirror() -> Self {
         MCMirror {
@@ -49,12 +100,20 @@ impl MCMirror {
     }
 }
 
+/// Minecraft mod loader type and version.
+///
+/// Represents the mod loader to use with the game, such as Fabric.
+/// The `None` variant indicates vanilla Minecraft without any mod loader.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MCLoader {
     None,
     Fabric(String),
 }
 
+/// Configuration for a mod in the runtime config.
+///
+/// Specifies either a specific version to download from Modrinth or a local
+/// file name to use. Only one of these should be set at a time.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct ModConfig {
     pub version: Option<String>,
@@ -62,6 +121,15 @@ pub struct ModConfig {
 }
 
 impl From<Version> for ModConfig {
+    /// Creates a mod configuration from a Modrinth version.
+    ///
+    /// Extracts the version number from the Modrinth version data.
+    /// The `file_name` field is set to None since the file name will be
+    /// determined during download and stored in the locked config.
+    ///
+    /// # Arguments
+    ///
+    /// * `version` - Modrinth version data to extract version from
     fn from(version: Version) -> Self {
         Self {
             version: Some(version.version_number),
@@ -71,6 +139,20 @@ impl From<Version> for ModConfig {
 }
 
 impl ModConfig {
+    /// Creates a mod configuration for a local mod file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - Name of the mod file in the mods directory
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use launcher::config::ModConfig;
+    /// let config = ModConfig::from_local("fabric-api.jar");
+    /// assert!(config.file_name.is_some());
+    /// assert!(config.version.is_none());
+    /// ```
     #[must_use]
     pub fn from_local(file_name: &str) -> Self {
         Self {
@@ -80,6 +162,10 @@ impl ModConfig {
     }
 }
 
+/// Runtime configuration for the Minecraft launcher.
+///
+/// Contains user-configurable settings for game launching, including memory,
+/// window size, game directory, Java path, loader type, mirror URLs, and mods.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeConfig {
     pub max_memory_size: u32,
@@ -94,8 +180,15 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// Add mod for config
+    /// Adds a mod configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name/identifier for the mod
+    /// * `modconf` - Mod configuration specifying version or local file
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::{RuntimeConfig, ModConfig};
     /// let mut config = RuntimeConfig::default();
@@ -110,8 +203,14 @@ impl RuntimeConfig {
         }
     }
 
-    /// Add local mod for config
+    /// Adds a local mod by file name.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - Name of the mod file (used as both mod name and file name)
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::RuntimeConfig;
     /// let mut config = RuntimeConfig::default();
@@ -122,8 +221,14 @@ impl RuntimeConfig {
         self.add_mod(file_name, modconf);
     }
 
-    /// Remove mod for config
+    /// Removes a mod from the configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the mod to remove
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::RuntimeConfig;
     /// let mut config = RuntimeConfig::default();
@@ -141,6 +246,13 @@ impl RuntimeConfig {
 }
 
 impl Default for RuntimeConfig {
+    /// Creates a default runtime configuration with sensible defaults:
+    /// - 5GB max memory
+    /// - 854x480 window size
+    /// - Current directory as game directory
+    /// - "java" as Java path
+    /// - No loader (vanilla)
+    /// - Official Mojang mirrors
     fn default() -> Self {
         RuntimeConfig {
             max_memory_size: 5000,
@@ -157,6 +269,9 @@ impl Default for RuntimeConfig {
 }
 
 // version type
+/// Minecraft version type for filtering version lists.
+///
+/// Used when listing available Minecraft versions to filter by release type.
 #[derive(Subcommand, Debug)]
 pub enum VersionType {
     All,
@@ -174,6 +289,10 @@ impl From<VersionType> for official::VersionType {
     }
 }
 
+/// Locked configuration for a mod with exact file information.
+///
+/// Contains the resolved file name, version, download URL, and checksum for
+/// a specific mod. This is auto-generated and should not be manually edited.
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 pub struct LockedModConfig {
     pub file_name: String,
@@ -184,6 +303,10 @@ pub struct LockedModConfig {
 }
 
 impl From<Version> for LockedModConfig {
+    /// Creates a locked mod config from a Modrinth version.
+    ///
+    /// Extracts the file information, version number, and download URL from
+    /// the version data and reads the current Minecraft version from the config.
     fn from(version: Version) -> Self {
         let file = version.files.clone().remove(0);
         let mc_version = ConfigHandler::read().unwrap().config().game_version.clone();
@@ -197,6 +320,12 @@ impl From<Version> for LockedModConfig {
     }
 }
 impl LockedModConfig {
+    /// Creates a locked config for a local mod file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - Name of the mod file
+    /// * `mc_version` - Minecraft version this mod is for
     #[must_use]
     pub fn from_local(file_name: &str, mc_version: &str) -> Self {
         Self {
@@ -209,14 +338,25 @@ impl LockedModConfig {
     }
 }
 
+/// Locked configuration with resolved mod information.
+///
+/// Contains the exact versions, file names, and checksums for all configured mods.
+/// This file is auto-generated and should not be manually edited.
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 pub struct LockedConfig {
     pub mods: Option<BTreeMap<String, LockedModConfig>>,
 }
 
 impl LockedConfig {
-    /// add mod for locked config
+    /// Adds a mod configuration with locked version information.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name/identifier for the mod
+    /// * `modconf` - Locked mod configuration with file details
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::{LockedConfig, LockedModConfig};
     /// let mut config = LockedConfig::default();
@@ -231,8 +371,15 @@ impl LockedConfig {
         }
     }
 
-    /// add local mod for locked config
+    /// Adds a local mod configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the mod file
+    /// * `mc_version` - Minecraft version this mod is for
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::LockedConfig;
     /// let mut config = LockedConfig::default();
@@ -242,16 +389,23 @@ impl LockedConfig {
         self.add_mod(name, LockedModConfig::from_local(name, mc_version));
     }
 
-    /// remove mod for locked config
+    /// Removes a mod from the locked configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the mod to remove
+    ///
     /// # Examples
+    ///
     /// ```
     /// use launcher::config::LockedConfig;
     /// let mut config = LockedConfig::default();
     /// config.add_local_mod("file name","1.1.1");
     /// config.remove_mod("file name");
     /// ```
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if the mods configuration cannot be accessed.
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         if let Some(mods) = self.mods.as_mut() {
             mods.remove(name);
@@ -263,6 +417,10 @@ impl LockedConfig {
     }
 }
 
+/// User account information for authentication.
+///
+/// Contains user details and access token for either offline mode
+/// or Microsoft account authentication.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserAccount {
     pub user_name: String,
@@ -272,6 +430,7 @@ pub struct UserAccount {
 }
 
 impl Default for UserAccount {
+    /// Creates a default offline user account with a generated UUID.
     fn default() -> Self {
         Self {
             user_name: "noname".to_owned(),
@@ -283,6 +442,11 @@ impl Default for UserAccount {
 }
 
 impl UserAccount {
+    /// Creates an offline account with the given username.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Username for the offline account
     #[must_use]
     pub fn new_offline(name: &str) -> Self {
         Self {
@@ -293,8 +457,17 @@ impl UserAccount {
         }
     }
 
+    /// Creates a new Microsoft account by authenticating through device code flow.
+    ///
+    /// This method initiates an interactive authentication process where the user
+    /// must visit a URL and enter a code to authorize the application.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Microsoft device flow initialization fails
+    /// - User authentication times out
+    /// - Xbox Live authentication fails
+    /// - Minecraft authentication fails
     pub fn new_microsoft() -> anyhow::Result<Self> {
         // Step 1: Start device flow
         let device_flow_state = MinecraftAuthenticator::from_compile_env().start_device_flow()?;
@@ -328,7 +501,10 @@ impl UserAccount {
     }
 }
 
-/// Mutable access count
+/// Mutable access counter wrapper.
+///
+/// Tracks whether a value has been accessed mutably to enable
+/// selective writing of only modified configuration fields.
 #[derive(Debug, Clone)]
 struct Mac<T> {
     value: T,
@@ -336,6 +512,9 @@ struct Mac<T> {
 }
 
 impl<T> Mac<T> {
+    /// Creates a new wrapper with the given value.
+    ///
+    /// The mutable access flag is initially set to false.
     #[inline]
     pub fn new(value: T) -> Self {
         Self {
@@ -344,17 +523,22 @@ impl<T> Mac<T> {
         }
     }
 
+    /// Returns a reference to the wrapped value.
     #[inline]
     pub const fn get(&self) -> &T {
         &self.value
     }
 
+    /// Returns a mutable reference to the wrapped value.
+    ///
+    /// Sets the mutable access flag to true.
     #[inline]
     pub fn get_mut(&mut self) -> &mut T {
         self.has_mut_accessed = true;
         &mut self.value
     }
 
+    /// Checks if the value has been accessed mutably.
     #[inline]
     pub fn has_mut_accessed(&self) -> bool {
         self.has_mut_accessed
@@ -362,6 +546,7 @@ impl<T> Mac<T> {
 }
 
 impl<T> From<T> for Mac<T> {
+    /// Creates a wrapper from a value.
     #[inline]
     fn from(value: T) -> Self {
         Mac::new(value)
@@ -383,6 +568,10 @@ impl<T> DerefMut for Mac<T> {
     }
 }
 
+/// Configuration file paths.
+///
+/// Stores the paths for the three configuration files:
+/// config.toml, config.lock, and account.toml.
 #[derive(Debug, Clone)]
 pub struct ConfigPaths {
     config: String,
@@ -391,6 +580,7 @@ pub struct ConfigPaths {
 }
 
 impl Default for ConfigPaths {
+    /// Creates default paths: config.toml, config.lock, and account.toml.
     fn default() -> Self {
         Self {
             config: "config.toml".into(),
@@ -405,6 +595,12 @@ impl Default for ConfigPaths {
 /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
 /// updated and written to the file upon `ConfigHandler`'s drop.
 /// In contrast, the `locked_config` field will not write.
+///
+/// Main handler for managing all launcher configurations.
+///
+/// Provides methods for reading, writing, and modifying runtime config,
+/// locked config, and user account information. Automatically writes
+/// modified configurations when dropped.
 #[derive(Debug, Clone)]
 pub struct ConfigHandler {
     config: Mac<RuntimeConfig>,
@@ -414,47 +610,73 @@ pub struct ConfigHandler {
 }
 
 impl ConfigHandler {
+    /// Returns a reference to the runtime configuration.
     #[inline]
     #[must_use]
     pub fn config(&self) -> &RuntimeConfig {
         &self.config
     }
 
+    /// Returns a mutable reference to the runtime configuration.
+    ///
+    /// Accessing the config mutably marks it as modified, causing it to be
+    /// written when the handler is dropped.
     #[inline]
     pub fn config_mut(&mut self) -> &mut RuntimeConfig {
         &mut self.config
     }
 
+    /// Returns a reference to the locked configuration.
     #[inline]
     #[must_use]
     pub fn locked_config(&self) -> &LockedConfig {
         &self.locked_config
     }
 
+    /// Returns a mutable reference to the locked configuration.
+    ///
+    /// Accessing the locked config mutably marks it as modified, causing it to be
+    /// written when the handler is dropped.
     #[inline]
     pub fn locked_config_mut(&mut self) -> &mut LockedConfig {
         &mut self.locked_config
     }
 
+    /// Returns a reference to the user account.
     #[inline]
     #[must_use]
     pub fn user_account(&self) -> &UserAccount {
         &self.user_account
     }
 
+    /// Returns a mutable reference to the user account.
+    ///
+    /// Accessing the user account mutably marks it as modified, causing it to be
+    /// written when the handler is dropped.
     #[inline]
     pub fn user_account_mut(&mut self) -> &mut UserAccount {
         &mut self.user_account
     }
 
+    /// Initializes the configuration handler with default paths.
+    ///
+    /// Creates default configuration files if they don't exist.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if the configuration files cannot be written.
     pub fn init() -> Result<()> {
         ConfigHandler::init_for_paths(ConfigPaths::default())
     }
 
+    /// Initializes the configuration handler with custom paths.
+    ///
+    /// Creates configuration files at the specified paths if they don't exist.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Configuration files do not exist
+    /// - Configuration files contain invalid TOML
+    /// - Configuration validation fails
     pub fn init_for_paths(paths: ConfigPaths) -> Result<()> {
         let handle = Self {
             config: Mac::new(RuntimeConfig::default()),
@@ -466,6 +688,7 @@ impl ConfigHandler {
         Ok(())
     }
 
+    /// Checks if a mod exists in the runtime config.
     #[must_use]
     pub fn has_mod_name(&self, mod_name: &str) -> bool {
         self.config()
@@ -474,6 +697,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
+    /// Checks if a mod exists in the locked config.
     #[must_use]
     pub fn has_locked_mod_name(&self, mod_name: &str) -> bool {
         self.locked_config()
@@ -482,6 +706,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
+    /// Checks if a mod configuration matches the given config.
     #[must_use]
     pub fn is_mod_config_match(&self, name: &str, mod_conf: &ModConfig) -> bool {
         self.config()
@@ -490,6 +715,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
+    /// Checks if a locked mod configuration matches the given config.
     #[must_use]
     pub fn is_locked_mod_config_match(&self, name: &str, mod_conf: &LockedModConfig) -> bool {
         self.locked_config()
@@ -497,22 +723,30 @@ impl ConfigHandler {
             .clone()
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
-    /// Read config.toml and config.lock and account.toml
+    /// Reads configuration files from the default paths.
+    ///
+    /// Reads config.toml, config.lock, and account.toml. If config.lock or
+    /// account.toml don't exist, they are created with default values.
+    ///
     /// # Errors
-    /// Error when config.toml not exist
-    /// Error When config.toml or config.lock context is invalid
-    /// # Note
-    /// When config.lock not exist, this function will create a default config.lock data
+    /// Returns an error if:
+    /// - config.toml does not exist
+    /// - config.toml contains invalid TOML
+    /// - Configuration validation fails
     pub fn read() -> Result<Self> {
         ConfigHandler::read_from_paths(ConfigPaths::default())
     }
 
-    /// Read config.toml and config.lock account.toml from paths
+    /// Reads configuration files from custom paths.
+    ///
+    /// Reads config.toml, config.lock, and account.toml from the specified paths.
+    /// If config.lock or account.toml don't exist, they are created with default values.
+    ///
     /// # Errors
-    /// Error when config.toml not exist
-    /// Error When config.toml or config.lock context is invalid
-    /// # Note
-    /// When config.lock not exist, this function will create a default config.lock data
+    /// Returns an error if:
+    /// - config.toml does not exist
+    /// - config.toml contains invalid TOML
+    /// - Configuration validation fails
     pub fn read_from_paths(paths: ConfigPaths) -> Result<Self> {
         let config = fs::read_to_string(&paths.config)?;
         let config: RuntimeConfig = toml::from_str(&config)?;
@@ -549,21 +783,40 @@ impl ConfigHandler {
         })
     }
 
-    /// Add offline account which contain name
+    /// Adds an offline account with the given username.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Username for the offline account
     pub fn add_offline_account(&mut self, name: &str) {
         *self.user_account_mut() = UserAccount::new_offline(name);
     }
 
-    /// Add microsoft account
+    /// Adds a Microsoft account to the configuration.
+    ///
+    /// Initiates an interactive authentication process where the user
+    /// must visit a URL and enter a code to authorize the application.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Microsoft device flow initialization fails
+    /// - User authentication times out
+    /// - Xbox Live authentication fails
+    /// - Minecraft authentication fails
     pub fn add_microsoft_account(&mut self) -> anyhow::Result<()> {
         *self.user_account_mut() = UserAccount::new_microsoft()?;
         Ok(())
     }
 
+    /// Writes all configuration files to disk.
+    ///
+    /// Writes the runtime config, locked config, and user account to their
+    /// respective files, overwriting any existing content.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Configuration files cannot be written
+    /// - Configuration cannot be serialized to TOML
     pub fn write_all(&self) -> Result<()> {
         fs::write(
             &self.paths.config,
@@ -586,15 +839,15 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Write `config.toml` and `config.lock`
-    /// # Writing with Mutable Access
+    /// Writes only modified configuration files to disk.
     ///
-    /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
-    /// updated and written to the file upon `write()` is call.
-    /// In contrast, the `locked_config` field will not write.
+    /// Only writes files that have been accessed mutably since the last write.
+    /// Also manages mod file enabling/disabling based on configuration.
     ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Modified configuration cannot be written
+    /// - Configuration cannot be serialized to TOML
     pub fn write_with_mut(&self) -> Result<()> {
         if self.config.has_mut_accessed() {
             fs::write(
@@ -623,9 +876,16 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Add local mod
+    /// Adds a local mod to the configuration.
+    ///
+    /// The mod file must exist in the game's mods directory.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Name of the mod file
+    ///
     /// # Errors
-    /// Error when file mods/name not found
+    /// Returns an error if the mod file does not exist.
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
         // Error when file not found
         let path = Path::new(&self.config().game_dir).join("mods").join(name);
@@ -643,9 +903,20 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Add unlocal mod with block
+    /// Adds a remote mod from Modrinth (blocking).
+    ///
+    /// Fetches the mod version from Modrinth and adds it to both the runtime
+    /// and locked configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Modrinth project slug or ID
+    /// * `version` - Optional version string (uses latest if None)
+    ///
     /// # Errors
-    /// Error when fetch mod fail
+    /// Returns an error if:
+    /// - Network request to Modrinth fails
+    /// - No compatible versions are found
     pub fn add_mod_unlocal_blocking(&mut self, name: &str, version: Option<&String>) -> Result<()> {
         let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
 
@@ -661,9 +932,20 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Add unlocal mod
+    /// Adds a remote mod from Modrinth (async).
+    ///
+    /// Fetches the mod version from Modrinth and adds it to both the runtime
+    /// and locked configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Modrinth project slug or ID
+    /// * `version` - Optional version string (uses latest if None)
+    ///
     /// # Errors
-    /// Error when fetch mod fail
+    /// Returns an error if:
+    /// - Network request to Modrinth fails
+    /// - No compatible versions are found
     pub async fn add_mod_unlocal(&mut self, name: &str, version: Option<&String>) -> Result<()> {
         let version = fetch_version(name, version, &self.config).await?.remove(0);
 
@@ -679,9 +961,15 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Add mod from Version data
+    /// Adds a mod from Version data to both config and locked config.
+    ///
+    /// Updates the runtime config with the mod version information and
+    /// creates a corresponding entry in the locked config with file details.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Configuration cannot be serialized to TOML
+    /// - Configuration cannot be written to file
     pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
         let modconf = ModConfig::from(version.clone());
         if !self.is_mod_config_match(name, &modconf) {
@@ -696,12 +984,18 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Remove mod for configs
+    /// Removes a mod from both config and locked config.
+    ///
+    /// Also removes the mod file from the game's mods directory.
+    ///
     /// # Panic
     /// panic when can't found mod in config.lock
     ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Mod is not found in locked config
+    /// - Mod file cannot be removed from filesystem
+    /// - Mod configuration cannot be updated
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         let locked_mods = self
             .locked_config
@@ -726,9 +1020,16 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Rename file which not list in `config.toml` to `mod_filename.unuse`
+    /// Disables mod files that are not listed in `config.toml` by renaming them.
+    ///
+    /// Files in the mods directory that are not configured in the config will be
+    /// renamed with a `.unuse` extension to prevent them from being loaded.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Mods directory cannot be accessed
+    /// - File renaming fails
+    /// - File metadata cannot be read
     #[allow(clippy::unnecessary_wraps, reason = "wraps is human readable")]
     #[allow(
         clippy::redundant_closure_for_method_calls,
@@ -771,10 +1072,18 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// Rename file which list in `config.toml` from `mod_filename.unuse` to `mod_filename`
+    /// Enables mod files that are listed in `config.toml` by renaming them.
+    ///
+    /// Files in the mods directory that have a `.unuse` extension and are
+    /// configured in the config will be renamed back to their original name.
+    ///
     /// # Errors
+    /// Returns an error if:
+    /// - Mods directory cannot be accessed
+    /// - File renaming fails
+    /// - File metadata cannot be read
     /// # Panics
-    /// TODO complete docs
+    /// Panics if mod information in locked config is invalid.
     #[allow(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "case_sensitive is need"
@@ -819,6 +1128,10 @@ impl ConfigHandler {
 }
 
 impl Drop for ConfigHandler {
+    /// Automatically writes modified configurations when dropped.
+    ///
+    /// Calls `write_with_mut()` to persist any configuration changes that were
+    /// made through mutable access. Panics if writing fails.
     #[inline]
     fn drop(&mut self) {
         if let Err(e) = self.write_with_mut() {

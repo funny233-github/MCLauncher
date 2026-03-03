@@ -15,7 +15,7 @@ fn main() -> Result<()> {
     env_logger::init();
 
     let res = MinecraftAuthenticator::from_compile_env().authenticate()?;
-    log::debug!("profile: {:#?}", res);
+    log::debug!("profile: {res:#?}");
 
     Ok(())
 }

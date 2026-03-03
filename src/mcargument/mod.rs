@@ -77,8 +77,17 @@ fn replace_arguments_from_game(
 }
 
 impl ConfigHandler {
+    /// Generates the complete launch arguments for Minecraft.
+    ///
+    /// Combines JVM arguments, game arguments, and classpath to create
+    /// the full command line needed to launch Minecraft with the configured
+    /// settings and authentication.
+    ///
     /// # Errors
-    /// TODO complete docs
+    /// Returns an error if:
+    /// - Version API cannot be read
+    /// - Classpath cannot be generated
+    /// - Game directory or version files cannot be accessed
     pub fn args_provider(&self) -> anyhow::Result<Vec<String>> {
         let mut args = vec![
             format!("-Xmx{}m", self.config().max_memory_size),

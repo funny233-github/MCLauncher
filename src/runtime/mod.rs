@@ -2,8 +2,16 @@ use crate::config::ConfigHandler;
 use std::io;
 use std::process::{Command, Stdio};
 
+/// Runs the Minecraft game with the provided configuration.
+///
+/// Generates the appropriate launch arguments and spawns a new process
+/// to run Minecraft. Captures and forwards the game's stdout to the console.
+///
 /// # Errors
-/// TODO complete docs
+/// Returns an error if:
+/// - Launch arguments cannot be generated
+/// - Java process cannot be spawned
+/// - Output cannot be captured
 pub fn gameruntime(handle: &ConfigHandler) -> anyhow::Result<()> {
     let args = handle.args_provider()?;
     let path = &handle.config().java_path;
