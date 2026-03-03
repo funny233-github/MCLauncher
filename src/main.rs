@@ -4,7 +4,6 @@ use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
 use launcher::install::install_mc;
 use launcher::modmanage;
 use launcher::runtime::gameruntime;
-use log::error;
 use mc_api::{fabric::Loader, official::VersionManifest};
 
 #[derive(Parser, Debug)]
@@ -25,7 +24,8 @@ enum Command {
     List(ListSub),
 
     /// Change username
-    Account { name: String },
+    #[command(subcommand)]
+    Account(Account),
 
     /// Install Minecraft
     Install {
@@ -64,6 +64,12 @@ enum ListSub {
         #[arg(long, default_value_t = 60)]
         limit: usize,
     },
+}
+
+#[derive(Subcommand, Debug)]
+enum Account {
+    Offline { name: String },
+    Microsoft,
 }
 
 #[derive(Subcommand, Debug)]
@@ -111,17 +117,16 @@ enum ModManage {
     Clean,
 }
 
-fn print_version_list(name: &str, versions: &[String], limit: usize) -> anyhow::Result<()> {
+fn print_version_list(name: &str, versions: &[String], limit: usize) {
     let count = versions.len();
     let display_count = limit.min(count);
-    let mut table = tabled::Table::from_iter(
-        versions
-            .iter()
-            .take(limit)
-            .cloned()
-            .collect::<Vec<String>>()
-            .chunks(6),
-    );
+    let mut table: tabled::Table = versions
+        .iter()
+        .take(limit)
+        .cloned()
+        .collect::<Vec<String>>()
+        .chunks(6)
+        .collect();
     println!(
         "Available {} versions ({}/{}):\n{}",
         name,
@@ -129,7 +134,6 @@ fn print_version_list(name: &str, versions: &[String], limit: usize) -> anyhow::
         count,
         table.with(tabled::settings::Style::modern())
     );
-    Ok(())
 }
 
 fn handle_args() -> anyhow::Result<()> {
@@ -147,22 +151,27 @@ fn handle_args() -> anyhow::Result<()> {
                     limit: list_limit,
                 } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
-                        .list(version_type.into());
-                    print_version_list("Minecraft", &list, list_limit)?;
+                        .list(&version_type.into());
+                    print_version_list("Minecraft", &list, list_limit);
                 }
                 ListSub::Loader {
                     loader: _loader,
                     limit: list_limit,
                 } => {
                     let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
-                    let list: Vec<String> = l.iter().map(|x| x.version.to_owned()).collect();
-                    print_version_list("fabric loader", &list, list_limit)?;
+                    let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
+                    print_version_list("fabric loader", &list, list_limit);
                 }
             }
         }
-        Command::Account { name: _name } => {
+        Command::Account(account_type) => {
             let mut handle = ConfigHandler::read()?;
-            handle.add_offline_account(&_name);
+            match account_type {
+                Account::Offline { name } => {
+                    handle.add_offline_account(&name);
+                }
+                Account::Microsoft => handle.add_microsoft_account()?,
+            }
         }
         Command::Install { version, fabric } => {
             let mut handle = ConfigHandler::read()?;
@@ -171,13 +180,13 @@ fn handle_args() -> anyhow::Result<()> {
                 return Ok(());
             }
 
-            if let Some(_version) = version {
-                println!("Set version to {}", &_version);
-                handle.config_mut().game_version = _version;
+            if let Some(version) = version {
+                println!("Set version to {}", &version);
+                handle.config_mut().game_version = version;
             }
-            if let Some(_fabric) = fabric {
-                println!("Set loader to {}", &_fabric);
-                handle.config_mut().loader = MCLoader::Fabric(_fabric);
+            if let Some(fabric) = fabric {
+                println!("Set loader to {}", &fabric);
+                handle.config_mut().loader = MCLoader::Fabric(fabric);
             } else {
                 handle.config_mut().loader = MCLoader::None;
             }
@@ -186,7 +195,7 @@ fn handle_args() -> anyhow::Result<()> {
         }
         Command::Run => {
             let config = ConfigHandler::read()?;
-            gameruntime(config)?;
+            gameruntime(&config)?;
         }
         Command::Mirror(mirror) => {
             let mut handle = ConfigHandler::read()?;
@@ -202,7 +211,7 @@ fn handle_args() -> anyhow::Result<()> {
                 version,
                 local,
                 config_only,
-            } => modmanage::add(&name, version, local, config_only)?,
+            } => modmanage::add(&name, version.as_ref(), local, config_only)?,
             ModManage::Remove { name } => modmanage::remove(&name)?,
             ModManage::Update { config_only } => modmanage::update(config_only)?,
             ModManage::Install => modmanage::install()?,
@@ -214,9 +223,8 @@ fn handle_args() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
-    if let Err(e) = handle_args() {
-        error!("Error occurred: {}\nCaused by: {:?}", e, e.source());
-    }
+    handle_args()?;
+    Ok(())
 }
