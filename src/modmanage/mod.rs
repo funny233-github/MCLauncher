@@ -1,3 +1,48 @@
+//! Minecraft mod management module.
+//!
+//! This module provides comprehensive functionality for managing Minecraft mods,
+//! including fetching, installing, updating, syncing, and searching mods from Modrinth.
+//! It supports both local mod files and remote mod downloads.
+//!
+//! # Features
+//!
+//! - **Mod Discovery**: Search for mods on Modrinth by name
+//! - **Version Management**: Fetch available versions and filter by game version and loader
+//! - **Installation**: Download and install mods with SHA-1 verification
+//! - **Updates**: Update all mods to their latest compatible versions
+//! - **Syncing**: Sync mods to exact versions specified in configuration
+//! - **Cleanup**: Remove unused mods and stale mod files
+//! - **Local Mods**: Support for manually added local mod files
+//!
+//! # Architecture
+//!
+//! The mod management system uses two configuration files:
+//!
+//! - `config.toml` - User-defined mod list with version preferences
+//! - `config.lock` - Locked versions with download URLs and checksums
+//!
+//! # Workflow
+//!
+//! 1. **Add Mod**: Fetch mod info from Modrinth or use local file
+//! 2. **Sync/Update**: Update config.lock with correct versions
+//! 3. **Install**: Download and verify mods to game directory
+//! 4. **Clean**: Remove unused mods from config and filesystem
+//!
+//! # Example
+//!
+//! ```no_run
+//! use your_crate::modmanage::{add, update, install};
+//!
+//! // Add a mod from Modrinth
+//! add("fabric-api", None, false, false).expect("Failed to add mod");
+//!
+//! // Update all mods to latest versions
+//! update(false).expect("Failed to update mods");
+//!
+//! // Install mods to game directory
+//! install().expect("Failed to install mods");
+//! ```
+
 use crate::config::{ConfigHandler, MCLoader, ModConfig, RuntimeConfig};
 use anyhow::Result;
 use futures::stream::{self, StreamExt};
@@ -14,6 +59,25 @@ use std::{
 use tabled::{settings::Style, Table, Tabled};
 use walkdir::WalkDir;
 
+/// Checks if a mod version is compatible with the current configuration.
+///
+/// This function verifies that a mod version supports both the configured
+/// game version and the configured mod loader (e.g., Fabric).
+///
+/// # Arguments
+///
+/// * `version` - The mod version to check
+/// * `config` - Runtime configuration containing game version and loader
+///
+/// # Returns
+///
+/// `true` if the version is compatible with the current configuration, `false` otherwise.
+///
+/// # Compatibility Rules
+///
+/// - The version's `game_versions` must include the configured game version
+/// - The version's `loaders` must include the configured loader (if any)
+/// - Mods cannot be installed without a loader (`MCLoader::None` is not supported)
 fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
     version
         .game_versions
@@ -25,6 +89,26 @@ fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
         })
 }
 
+/// Filters mod versions based on version number and compatibility.
+///
+/// This function takes a list of mod versions and filters them to only
+/// include versions that are compatible with the current game version
+/// and loader, optionally also filtering by a specific version number.
+///
+/// # Arguments
+///
+/// * `versions` - List of all available versions for a mod
+/// * `version` - Optional version number to filter for (e.g., "1.0.0")
+/// * `config` - Runtime configuration containing game version and loader
+/// * `name` - Name of the mod (used for error messages)
+///
+/// # Returns
+///
+/// A filtered list of compatible versions.
+///
+/// # Errors
+///
+/// Returns an error if no matching compatible versions are found.
 fn filter_versions(
     versions: Vec<Version>,
     version: Option<&String>,
@@ -48,13 +132,37 @@ fn filter_versions(
 ///
 /// Retrieves version information for the specified mod name, optionally
 /// filtering by version. Returns versions that are compatible with the
-/// configured game version.
+/// configured game version and loader.
+///
+/// # Arguments
+///
+/// * `name` - The mod name or slug on Modrinth (e.g., "fabric-api")
+/// * `version` - Optional version number to filter for (e.g., Some("0.92.0"))
+/// * `config` - Runtime configuration containing game version and loader
+///
+/// # Returns
+///
+/// A vector of compatible `Version` objects. If no specific version is requested,
+/// returns all compatible versions ordered by release date (newest first).
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Network request to Modrinth fails
-/// - No compatible versions are found
+/// - No compatible versions are found for the specified game version
 /// - Response cannot be parsed
+/// - The mod does not exist on Modrinth
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::fetch_version;
+/// use your_crate::config::RuntimeConfig;
+///
+/// let config = RuntimeConfig { /* ... */ };
+/// let versions = fetch_version("fabric-api", None, &config).await?;
+/// println!("Found {} compatible versions", versions.len());
+/// ```
 pub async fn fetch_version(
     name: &str,
     version: Option<&String>,
@@ -67,13 +175,32 @@ pub async fn fetch_version(
 /// Fetches available versions of a mod from Modrinth (blocking).
 ///
 /// Blocking version of `fetch_version` that runs synchronously instead of
-/// using async/await.
+/// using async/await. This is useful in contexts where async is not available
+/// or when you want to block the current thread until the fetch completes.
+///
+/// # Arguments
+///
+/// * `name` - The mod name or slug on Modrinth (e.g., "fabric-api")
+/// * `version` - Optional version number to filter for (e.g., Some("0.92.0"))
+/// * `config` - Runtime configuration containing game version and loader
+///
+/// # Returns
+///
+/// A vector of compatible `Version` objects. If no specific version is requested,
+/// returns all compatible versions ordered by release date (newest first).
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Network request to Modrinth fails
-/// - No compatible versions are found
+/// - No compatible versions are found for the specified game version
 /// - Response cannot be parsed
+/// - The mod does not exist on Modrinth
+///
+/// # Note
+///
+/// This function blocks the current thread and should not be used in async contexts.
+/// Use `fetch_version` for async code.
 pub fn fetch_version_blocking(
     name: &str,
     version: Option<&String>,
@@ -85,16 +212,40 @@ pub fn fetch_version_blocking(
 
 /// Adds a mod to the configuration.
 ///
-/// Either adds a local mod file or downloads a mod from Modrinth.
-/// Optionally installs the mod files to the game directory.
+/// This function handles both local mod files and mods from Modrinth.
+/// It updates the configuration with the mod information and optionally
+/// installs the mod files to the game directory.
+///
+/// # Arguments
+///
+/// * `name` - For remote mods: the mod name/slug on Modrinth; for local mods: the file path
+/// * `version` - Optional version number for remote mods (e.g., Some("0.92.0"))
+/// * `local` - If `true`, treats `name` as a local file path; if `false`, fetches from Modrinth
+/// * `config_only` - If `true`, only updates configuration without installing files
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read or written
-/// - Mod file cannot be found (for local mods)
+/// - Local mod file cannot be found (for local mods)
 /// - Network request to Modrinth fails (for remote mods)
 /// - No compatible versions are found
 /// - Mod installation fails
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::add;
+///
+/// // Add a mod from Modrinth and install it
+/// add("fabric-api", None, false, false)?;
+///
+/// // Add a specific version from Modrinth without installing
+/// add("fabric-api", Some(&"0.92.0".to_string()), false, true)?;
+///
+/// // Add a local mod file
+/// add("/path/to/mod.jar", None, true, false)?;
+/// ```
 pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     let message = if local {
@@ -116,14 +267,30 @@ pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool)
 
 /// Removes a mod from the configuration.
 ///
-/// Deletes the mod entry from both config.toml and config.lock,
-/// and removes the mod file from the game directory.
+/// This function completely removes a mod from the launcher:
+/// - Removes the mod entry from config.toml
+/// - Removes the mod entry from config.lock
+/// - Removes the mod file from the game's mods directory
+///
+/// # Arguments
+///
+/// * `name` - The mod name to remove (must match the name used in `add()`)
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read or written
-/// - Mod is not found in configuration
-/// - Mod file cannot be removed
+/// - Mod is not found in the configuration
+/// - Mod file cannot be removed from the filesystem
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::remove;
+///
+/// remove("fabric-api")?;
+/// println!("Mod removed successfully");
+/// ```
 pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
@@ -134,15 +301,40 @@ pub fn remove(name: &str) -> Result<()> {
 
 /// Updates all mods in the configuration.
 ///
-/// Fetches the latest versions of all configured mods and updates
-/// the configuration. Optionally installs the updated mod files.
+/// This function updates all configured mods to their latest compatible
+/// versions. It fetches the newest versions from Modrinth that support
+/// the configured game version and loader, then updates config.lock.
+///
+/// # Arguments
+///
+/// * `config_only` - If `true`, only updates configuration without installing files
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read or written
-/// - Network requests to Modrinth fail
+/// - Network requests to Modrinth fail for any mod
 /// - No compatible versions are found for any mod
-/// - Mod installation fails
+/// - Mod installation fails (when `config_only` is `false`)
+///
+/// # Behavior
+///
+/// - Each mod is updated to the latest compatible version
+/// - Uses concurrent requests for better performance (10 concurrent)
+/// - Shows progress bar during the update process
+/// - Skips mods that are already at the latest compatible version
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::update;
+///
+/// // Update all mods and install them
+/// update(false)?;
+///
+/// // Only update configuration, don't install files
+/// update(true)?;
+/// ```
 pub fn update(config_only: bool) -> Result<()> {
     sync_or_update(false)?;
     if !config_only {
@@ -151,6 +343,37 @@ pub fn update(config_only: bool) -> Result<()> {
     Ok(())
 }
 
+/// Creates download tasks for all configured mods.
+///
+/// This function generates installation tasks for mods listed in config.lock,
+/// filtering to only include mods that are also present in config.toml.
+/// This ensures only active mods are installed.
+///
+/// # Arguments
+///
+/// * `handle` - Configuration handler providing access to locked config
+///
+/// # Returns
+///
+/// A vector of `InstallTask` objects for downloading and verifying mod files.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - No mods are found in config.lock
+/// - A mod is missing required metadata (URL or SHA-1)
+/// - The game directory path cannot be constructed
+///
+/// # Filtering Logic
+///
+/// Only creates tasks for mods that:
+/// - Have both URL and SHA-1 checksum metadata
+/// - Are present in both config.toml and config.lock
+///
+/// # Note
+///
+/// This function does not perform the actual download. Use `TaskPool::install()`
+/// to execute the download tasks.
 fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
     let mods = handle
         .locked_config()
@@ -183,15 +406,36 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
 
 /// Installs all configured mods.
 ///
-/// Downloads and installs all mods listed in the configuration
-/// that are compatible with the current game version.
+/// This function downloads and installs all mods listed in config.lock
+/// that are compatible with the current game version. It first filters
+/// the locked mods to only include mods that are also in config.toml,
+/// then performs the downloads with SHA-1 verification.
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read
 /// - No mods are configured
 /// - Mod download fails
 /// - File system operations fail
+/// - SHA-1 verification fails
+///
+/// # Behavior
+///
+/// - Only installs mods that appear in both config.toml and config.lock
+/// - Downloads mods with concurrent requests for better performance
+/// - Verifies SHA-1 checksums after download
+/// - Creates the mods directory if it doesn't exist
+/// - Skips installation if no mods are configured (returns Ok)
+///
+/// # Example
+///
+/// ```no_run
+/// use your_crate::modmanage::install;
+///
+/// install()?;
+/// println!("All mods installed successfully");
+/// ```
 pub fn install() -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
@@ -220,15 +464,41 @@ pub fn install() -> Result<()> {
 
 /// Syncs all mods to their configured versions.
 ///
-/// Ensures all mods in the configuration are at the exact versions
-/// specified in config.toml. Optionally installs the synced mod files.
+/// This function ensures all mods are at the exact versions specified
+/// in config.toml, rather than the latest available version. This is
+/// useful for reproducible builds or when you need specific mod versions.
+///
+/// # Arguments
+///
+/// * `config_only` - If `true`, only updates configuration without installing files
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read or written
 /// - Network requests to Modrinth fail
 /// - No compatible versions are found for any mod
-/// - Mod installation fails
+/// - Mod installation fails (when `config_only` is `false`)
+///
+/// # Behavior
+///
+/// - Fetches the exact versions specified in config.toml
+/// - Updates config.lock with the specified versions
+/// - Uses concurrent requests for better performance (10 concurrent)
+/// - Shows progress bar during the sync process
+/// - Skips mods that are already at the correct version
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::sync;
+///
+/// // Sync all mods to configured versions and install them
+/// sync(false)?;
+///
+/// // Only sync configuration, don't install files
+/// sync(true)?;
+/// ```
 pub fn sync(config_only: bool) -> Result<()> {
     sync_or_update(true)?;
     if !config_only {
@@ -237,6 +507,23 @@ pub fn sync(config_only: bool) -> Result<()> {
     Ok(())
 }
 
+/// Creates a progress bar for tracking mod operations.
+///
+/// This helper function creates a progress bar with a consistent style
+/// for use during sync/update operations.
+///
+/// # Arguments
+///
+/// * `len` - The total number of items to process
+///
+/// # Returns
+///
+/// A configured `ProgressBar` ready to use.
+///
+/// # Progress Bar Style
+///
+/// Shows elapsed time, visual progress bar, position/total, and current message.
+/// Format: `[elapsed] [bar] pos/len message`
 fn progress_bar(len: usize) -> Result<ProgressBar> {
     let bar = ProgressBar::new(len as u64);
     bar.set_style(
@@ -248,6 +535,11 @@ fn progress_bar(len: usize) -> Result<ProgressBar> {
     Ok(bar)
 }
 
+/// Handle for processing a single mod during sync/update operations.
+///
+/// This struct contains the context needed to fetch and update a specific
+/// mod, including shared references to the configuration handler, progress bar,
+/// and runtime configuration.
 struct SyncUpdateHandle {
     name: String,
     conf: ModConfig,
@@ -258,6 +550,13 @@ struct SyncUpdateHandle {
 }
 
 impl SyncUpdateHandle {
+    /// Checks if the mod is already at the correct version in config.lock.
+    ///
+    /// This is used to avoid unnecessary re-downloads during sync operations.
+    ///
+    /// # Returns
+    ///
+    /// `true` if the mod is already synced to the correct version, `false` otherwise.
     fn is_mod_synced(&self) -> bool {
         let handle = self.handle_share.read().unwrap();
         let mc_version: &str = handle.config().game_version.as_ref();
@@ -275,6 +574,18 @@ impl SyncUpdateHandle {
         false
     }
 
+    /// Fetches mod information and updates the configuration.
+    ///
+    /// This async function fetches the appropriate version of the mod
+    /// (either the specified version for sync or latest for update) and
+    /// adds it to the locked configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network request to Modrinth fails
+    /// - No compatible versions are found
+    /// - Configuration cannot be updated
     async fn fetch_mod_to_config(&self) -> Result<()> {
         if let Some(ver) = self.conf.version.clone() {
             let version = {
@@ -292,6 +603,10 @@ impl SyncUpdateHandle {
         Ok(())
     }
 
+    /// Updates the progress bar for this mod.
+    ///
+    /// Increments the progress counter and sets an appropriate message
+    /// indicating whether the mod was synced or updated.
     fn update_bar(&self) {
         self.bar_share.inc(1);
         if self.sync {
@@ -303,6 +618,24 @@ impl SyncUpdateHandle {
         }
     }
 
+    /// Executes the sync/update operation for a single mod.
+    ///
+    /// This is the main entry point for processing a mod during bulk
+    /// sync/update operations. It checks if the mod is already synced,
+    /// fetches the appropriate version if needed, and updates the progress bar.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Network request to Modrinth fails
+    /// - No compatible versions are found
+    /// - Configuration cannot be updated
+    ///
+    /// # Behavior
+    ///
+    /// - Skips mods that are already at the correct version (sync mode only)
+    /// - Fetches specified version for sync mode, latest for update mode
+    /// - Handles local mod files if specified in configuration
     async fn execute(self) -> Result<()> {
         if self.sync && self.is_mod_synced() {
             self.update_bar();
@@ -323,6 +656,33 @@ impl SyncUpdateHandle {
     }
 }
 
+/// Async entry point for sync/update operations.
+///
+/// This function coordinates the bulk sync or update of all configured mods.
+/// It creates concurrent tasks for each mod and processes them with a progress bar.
+///
+/// # Arguments
+///
+/// * `sync` - If `true`, sync to exact versions from config.toml; if `false`, update to latest versions
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Configuration cannot be read
+/// - Network requests to Modrinth fail for any mod
+/// - No compatible versions are found for any mod
+///
+/// # Behavior
+///
+/// - Processes up to 10 mods concurrently
+/// - Shows a progress bar with status messages
+/// - Skips mods that are already at the correct version (sync mode only)
+/// - Uses shared configuration handler for thread-safe updates
+///
+/// # Note
+///
+/// This function uses `#[tokio::main(flavor = "current_thread")]` to run
+/// async code in a synchronous context.
 #[tokio::main(flavor = "current_thread")]
 async fn sync_or_update(sync: bool) -> Result<()> {
     let config_handler = ConfigHandler::read()?;
@@ -355,6 +715,24 @@ async fn sync_or_update(sync: bool) -> Result<()> {
     Ok(())
 }
 
+/// Removes unused mods from config.lock.
+///
+/// This function identifies mods that are present in config.lock but not
+/// in config.toml (i.e., mods that have been removed from the user's
+/// configuration) and removes them from config.lock.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Configuration cannot be read
+/// - Configuration cannot be written
+/// - A mod cannot be removed from config.lock
+///
+/// # Purpose
+///
+/// This cleanup operation ensures that config.lock only contains mods
+/// that are actually configured by the user in config.toml, preventing
+/// stale mod entries from accumulating.
 fn clean_locked_config_mods() -> Result<()> {
     let origin_handle = ConfigHandler::read()?;
     let mut handle = origin_handle.clone();
@@ -381,9 +759,30 @@ fn clean_locked_config_mods() -> Result<()> {
     Ok(())
 }
 
+/// Removes unused mod files from the mods directory.
+///
+/// This function scans the mods directory for files with the `.unuse`
+/// extension (which are marked as unused) and deletes them.
+///
+/// # Errors
+///
+/// Returns an error if:
+/// - Configuration cannot be read
+/// - The mods directory cannot be accessed
+/// - A file cannot be removed
+///
+/// # File Naming Convention
+///
+/// Unused mod files are expected to have the `.unuse` extension.
+/// For example: `fabric-api.jar.unuse`
+///
+/// # Note
+///
+/// This function performs case-sensitive file extension comparisons,
+/// which is necessary because some filesystems are case-sensitive.
 #[allow(
     clippy::case_sensitive_file_extension_comparisons,
-    reason = "case sensitive is need"
+    reason = "case sensitive is needed for cross-platform compatibility"
 )]
 fn clean_file_mods() -> Result<()> {
     let handle = ConfigHandler::read()?;
@@ -410,17 +809,33 @@ fn clean_file_mods() -> Result<()> {
     Ok(())
 }
 
-/// Cleans up unused mod files.
+/// Cleans up unused mod files and configuration entries.
 ///
-/// Removes mod entries from config.lock that are not in config.toml,
-/// and deletes any mod files in the mods directory that are marked
-/// as unused (have a .unuse extension).
+/// This function performs two cleanup operations:
+/// 1. Removes mods from config.lock that are not in config.toml
+/// 2. Deletes unused mod files (files with `.unuse` extension) from the mods directory
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read or written
 /// - File system operations fail
 /// - Files cannot be removed
+///
+/// # Purpose
+///
+/// Regular cleanup prevents accumulation of:
+/// - Stale mod entries in config.lock
+/// - Old mod files that are no longer needed
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::clean;
+///
+/// clean()?;
+/// println!("Cleanup completed successfully");
+/// ```
 pub fn clean() -> Result<()> {
     clean_locked_config_mods()?;
     clean_file_mods()?;
@@ -428,6 +843,7 @@ pub fn clean() -> Result<()> {
     Ok(())
 }
 
+/// Structure for displaying mod search results in a table.
 #[derive(Debug, Tabled)]
 struct HitsInfo {
     slug: String,
@@ -436,15 +852,48 @@ struct HitsInfo {
 
 /// Searches for mods on Modrinth.
 ///
-/// Searches for mods by name and filters results to only show
-/// mods that are compatible with the configured game version and loader.
+/// This function searches for mods by name and filters the results to
+/// only show mods that are compatible with the configured game version
+/// and loader. Results are displayed in a formatted table.
+///
+/// # Arguments
+///
+/// * `name` - The search query (mod name or keyword)
+/// * `limit` - Optional maximum number of results to display (default varies)
 ///
 /// # Errors
+///
 /// Returns an error if:
 /// - Configuration cannot be read
 /// - Network request to Modrinth fails
-/// - No loader is configured
+/// - No loader is configured in config.toml
 /// - Response cannot be parsed
+///
+/// # Behavior
+///
+/// - Fetches search results from Modrinth
+/// - Filters results to only show compatible mods
+/// - Fetches version info for each result to verify compatibility
+/// - Displays results in a formatted table
+/// - Shows message if too many results are found (suggests using --limit)
+///
+/// # Output Format
+///
+/// Results are displayed as a table with:
+/// - Column 1: Mod slug (unique identifier)
+/// - Column 2: Mod description
+///
+/// # Examples
+///
+/// ```no_run
+/// use your_crate::modmanage::search;
+///
+/// // Search for mods (default limit)
+/// search("inventory", None)?;
+///
+/// // Search with a specific limit
+/// search("inventory", Some(5))?;
+/// ```
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
