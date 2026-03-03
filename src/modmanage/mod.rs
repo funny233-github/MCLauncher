@@ -27,48 +27,54 @@ fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
 
 fn filter_versions(
     versions: Vec<Version>,
-    version: &Option<String>,
+    version: Option<&String>,
     config: &RuntimeConfig,
     name: &str,
 ) -> Result<Vec<Version>> {
     let res: Vec<Version> = versions
         .into_iter()
         .filter(|x| is_version_supported(x, config))
-        .filter(|x| version.as_ref().is_none_or(|v| &x.version_number == v))
+        .filter(|x| version.as_ref().is_none_or(|v| &&x.version_number == v))
         .collect();
 
     if res.is_empty() {
-        Err(anyhow::anyhow!("No matching versions found for '{}'", name))
+        Err(anyhow::anyhow!("No matching versions found for '{name}'"))
     } else {
         Ok(res)
     }
 }
 
+/// # Errors
+/// TODO complete docs
 pub async fn fetch_version(
     name: &str,
-    version: &Option<String>,
+    version: Option<&String>,
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch(name).await?;
     filter_versions(versions, version, config, name)
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn fetch_version_blocking(
     name: &str,
-    version: &Option<String>,
+    version: Option<&String>,
     config: &RuntimeConfig,
 ) -> Result<Vec<Version>> {
     let versions = Versions::fetch_blocking(name)?;
     filter_versions(versions, version, config, name)
 }
 
-pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) -> Result<()> {
+/// # Errors
+/// TODO complete docs
+pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     let message = if local {
         config_handler.add_mod_local(name)?;
         format!("Add local mod {name} successful")
     } else {
-        config_handler.add_mod_unlocal_blocking(name, &version)?;
+        config_handler.add_mod_unlocal_blocking(name, version)?;
         format!("Add mod {name} surcessful")
     };
     drop(config_handler);
@@ -81,6 +87,8 @@ pub fn add(name: &str, version: Option<String>, local: bool, config_only: bool) 
     Ok(())
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
@@ -89,6 +97,8 @@ pub fn remove(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn update(config_only: bool) -> Result<()> {
     sync_or_update(false)?;
     if !config_only {
@@ -113,20 +123,22 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
             Ok(InstallTask {
                 url: v
                     .url
-                    .to_owned()
-                    .ok_or_else(|| anyhow::anyhow!("Missing URL for mod {}", name))?,
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("Missing URL for mod {name}"))?,
                 sha1: Some(
                     v.sha1
-                        .to_owned()
-                        .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {}", name))?,
+                        .clone()
+                        .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {name}"))?,
                 ),
-                message: format!("Mod {:?} installed", &save_file),
+                message: format!("Mod {} installed", &save_file.display()),
                 save_file,
             })
         })
         .collect()
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn install() -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     if config_handler.locked_config().mods.is_none() || config_handler.config().mods.is_none() {
@@ -136,7 +148,7 @@ pub fn install() -> Result<()> {
         config_handler
             .locked_config()
             .mods
-            .to_owned()
+            .clone()
             .ok_or_else(|| anyhow::anyhow!("No mods found in config.lock"))?
             .into_iter()
             .filter(|(name, _)| {
@@ -153,6 +165,8 @@ pub fn install() -> Result<()> {
     Ok(())
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn sync(config_only: bool) -> Result<()> {
     sync_or_update(true)?;
     if !config_only {
@@ -203,7 +217,7 @@ impl SyncUpdateHandle {
         if let Some(ver) = self.conf.version.clone() {
             let version = {
                 let ver = if self.sync { Some(ver) } else { None };
-                fetch_version(&self.name, &ver, &self.origin_config_share)
+                fetch_version(&self.name, ver.as_ref(), &self.origin_config_share)
                     .await?
                     .remove(0)
             };
@@ -211,7 +225,7 @@ impl SyncUpdateHandle {
                 .write()
                 .unwrap()
                 .add_mod_from(&self.name, version)
-                .unwrap()
+                .unwrap();
         }
         Ok(())
     }
@@ -250,7 +264,7 @@ impl SyncUpdateHandle {
 #[tokio::main(flavor = "current_thread")]
 async fn sync_or_update(sync: bool) -> Result<()> {
     let config_handler = ConfigHandler::read()?;
-    if let Some(mods) = config_handler.config().mods.to_owned() {
+    if let Some(mods) = config_handler.config().mods.clone() {
         let origin_config = Arc::new(config_handler.config().to_owned());
         let config_handler = Arc::new(RwLock::new(config_handler));
         let bar = progress_bar(mods.len())?;
@@ -299,12 +313,16 @@ fn clean_locked_config_mods() -> Result<()> {
         });
 
     if let Some(x) = unuse_locked_mods {
-        x.to_owned()
+        x.clone()
             .try_for_each(|(name, _)| handle.locked_config_mut().remove_mod(name))?;
     }
     Ok(())
 }
 
+#[allow(
+    clippy::case_sensitive_file_extension_comparisons,
+    reason = "case sensitive is need"
+)]
 fn clean_file_mods() -> Result<()> {
     let handle = ConfigHandler::read()?;
     let mods_dir = Path::new(&handle.config().game_dir).join("mods");
@@ -321,15 +339,17 @@ fn clean_file_mods() -> Result<()> {
         })
         .try_for_each(|entry| {
             let file_path = entry?.path().to_owned();
-            if !file_path.is_dir() {
-                fs::remove_file(file_path)
-            } else {
+            if file_path.is_dir() {
                 Ok(())
+            } else {
+                fs::remove_file(file_path)
             }
         })?;
     Ok(())
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn clean() -> Result<()> {
     clean_locked_config_mods()?;
     clean_file_mods()?;
@@ -343,6 +363,8 @@ struct HitsInfo {
     description: String,
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
@@ -369,8 +391,8 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
                         });
                     if is_support_mod {
                         Some(Ok(HitsInfo {
-                            slug: hit.slug.to_owned(),
-                            description: hit.description.to_owned(),
+                            slug: hit.slug.clone(),
+                            description: hit.description.clone(),
                         }))
                     } else {
                         None

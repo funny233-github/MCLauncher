@@ -24,6 +24,7 @@ pub struct MCMirror {
 }
 
 impl MCMirror {
+    #[must_use]
     pub fn official_mirror() -> Self {
         MCMirror {
             version_manifest: "https://piston-meta.mojang.com/".into(),
@@ -34,6 +35,8 @@ impl MCMirror {
             fabric_maven: "https://maven.fabricmc.net/".into(),
         }
     }
+
+    #[must_use]
     pub fn bmcl_mirror() -> Self {
         MCMirror {
             version_manifest: "https://bmclapi2.bangbang93.com/".into(),
@@ -68,6 +71,7 @@ impl From<Version> for ModConfig {
 }
 
 impl ModConfig {
+    #[must_use]
     pub fn from_local(file_name: &str) -> Self {
         Self {
             version: None,
@@ -181,12 +185,8 @@ pub struct LockedModConfig {
 
 impl From<Version> for LockedModConfig {
     fn from(version: Version) -> Self {
-        let file = version.files.to_owned().remove(0);
-        let mc_version = ConfigHandler::read()
-            .unwrap()
-            .config()
-            .game_version
-            .to_owned();
+        let file = version.files.clone().remove(0);
+        let mc_version = ConfigHandler::read().unwrap().config().game_version.clone();
         Self {
             file_name: file.filename,
             version: Some(version.version_number),
@@ -197,6 +197,7 @@ impl From<Version> for LockedModConfig {
     }
 }
 impl LockedModConfig {
+    #[must_use]
     pub fn from_local(file_name: &str, mc_version: &str) -> Self {
         Self {
             file_name: file_name.to_owned(),
@@ -249,6 +250,8 @@ impl LockedConfig {
     /// config.add_local_mod("file name","1.1.1");
     /// config.remove_mod("file name");
     /// ```
+    /// # Errors
+    /// TODO complete docs
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         if let Some(mods) = self.mods.as_mut() {
             mods.remove(name);
@@ -280,6 +283,7 @@ impl Default for UserAccount {
 }
 
 impl UserAccount {
+    #[must_use]
     pub fn new_offline(name: &str) -> Self {
         Self {
             user_name: name.to_owned(),
@@ -289,6 +293,8 @@ impl UserAccount {
         }
     }
 
+    /// # Errors
+    /// TODO complete docs
     pub fn new_microsoft() -> anyhow::Result<Self> {
         // Step 1: Start device flow
         let device_flow_state = MinecraftAuthenticator::from_compile_env().start_device_flow()?;
@@ -379,17 +385,17 @@ impl<T> DerefMut for Mac<T> {
 
 #[derive(Debug, Clone)]
 pub struct ConfigPaths {
-    config_path: String,
-    locked_config_path: String,
-    user_account_path: String,
+    config: String,
+    locked_config: String,
+    user_account: String,
 }
 
 impl Default for ConfigPaths {
     fn default() -> Self {
         Self {
-            config_path: "config.toml".into(),
-            locked_config_path: "config.lock".into(),
-            user_account_path: "account.toml".into(),
+            config: "config.toml".into(),
+            locked_config: "config.lock".into(),
+            user_account: "account.toml".into(),
         }
     }
 }
@@ -409,6 +415,7 @@ pub struct ConfigHandler {
 
 impl ConfigHandler {
     #[inline]
+    #[must_use]
     pub fn config(&self) -> &RuntimeConfig {
         &self.config
     }
@@ -419,6 +426,7 @@ impl ConfigHandler {
     }
 
     #[inline]
+    #[must_use]
     pub fn locked_config(&self) -> &LockedConfig {
         &self.locked_config
     }
@@ -429,6 +437,7 @@ impl ConfigHandler {
     }
 
     #[inline]
+    #[must_use]
     pub fn user_account(&self) -> &UserAccount {
         &self.user_account
     }
@@ -438,10 +447,14 @@ impl ConfigHandler {
         &mut self.user_account
     }
 
+    /// # Errors
+    /// TODO complete docs
     pub fn init() -> Result<()> {
         ConfigHandler::init_for_paths(ConfigPaths::default())
     }
 
+    /// # Errors
+    /// TODO complete docs
     pub fn init_for_paths(paths: ConfigPaths) -> Result<()> {
         let handle = Self {
             config: Mac::new(RuntimeConfig::default()),
@@ -453,6 +466,7 @@ impl ConfigHandler {
         Ok(())
     }
 
+    #[must_use]
     pub fn has_mod_name(&self, mod_name: &str) -> bool {
         self.config()
             .mods
@@ -460,6 +474,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
+    #[must_use]
     pub fn has_locked_mod_name(&self, mod_name: &str) -> bool {
         self.locked_config()
             .mods
@@ -467,6 +482,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
     }
 
+    #[must_use]
     pub fn is_mod_config_match(&self, name: &str, mod_conf: &ModConfig) -> bool {
         self.config()
             .mods
@@ -474,6 +490,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
+    #[must_use]
     pub fn is_locked_mod_config_match(&self, name: &str, mod_conf: &LockedModConfig) -> bool {
         self.locked_config()
             .mods
@@ -481,7 +498,7 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
     /// Read config.toml and config.lock and account.toml
-    /// # Error
+    /// # Errors
     /// Error when config.toml not exist
     /// Error When config.toml or config.lock context is invalid
     /// # Note
@@ -491,38 +508,35 @@ impl ConfigHandler {
     }
 
     /// Read config.toml and config.lock account.toml from paths
-    /// # Error
+    /// # Errors
     /// Error when config.toml not exist
     /// Error When config.toml or config.lock context is invalid
     /// # Note
     /// When config.lock not exist, this function will create a default config.lock data
     pub fn read_from_paths(paths: ConfigPaths) -> Result<Self> {
-        let config = fs::read_to_string(&paths.config_path)?;
+        let config = fs::read_to_string(&paths.config)?;
         let config: RuntimeConfig = toml::from_str(&config)?;
 
         if let Some(mods) = config.mods.as_ref() {
             for (name, conf) in mods {
                 if conf.file_name.is_some() && conf.version.is_some() {
                     return Err(anyhow::anyhow!(
-                        "The mod {} have file_name and version in same time!",
-                        name
+                        "The mod {name} have file_name and version in same time!",
                     ));
                 }
             }
         }
         let config = Mac::new(config);
 
-        let locked_config = if fs::exists(&paths.locked_config_path).is_ok() {
-            let data = fs::read_to_string(&paths.locked_config_path)?;
+        let locked_config = if fs::exists(&paths.locked_config).is_ok() {
+            let data = fs::read_to_string(&paths.locked_config)?;
             Mac::new(toml::from_str(&data)?)
         } else {
             Mac::new(LockedConfig::default())
         };
 
-        let user_account = if fs::exists(&paths.user_account_path).is_ok() {
-            Mac::new(toml::from_str(&fs::read_to_string(
-                &paths.user_account_path,
-            )?)?)
+        let user_account = if fs::exists(&paths.user_account).is_ok() {
+            Mac::new(toml::from_str(&fs::read_to_string(&paths.user_account)?)?)
         } else {
             Mac::new(UserAccount::default())
         };
@@ -541,22 +555,26 @@ impl ConfigHandler {
     }
 
     /// Add microsoft account
+    /// # Errors
+    /// TODO complete docs
     pub fn add_microsoft_account(&mut self) -> anyhow::Result<()> {
         *self.user_account_mut() = UserAccount::new_microsoft()?;
         Ok(())
     }
 
+    /// # Errors
+    /// TODO complete docs
     pub fn write_all(&self) -> Result<()> {
         fs::write(
-            &self.paths.config_path,
+            &self.paths.config,
             toml::to_string_pretty(self.config.get())?,
         )?;
         fs::write(
-            &self.paths.locked_config_path,
+            &self.paths.locked_config,
             toml::to_string_pretty(self.locked_config.get())?,
         )?;
         fs::write(
-            &self.paths.user_account_path,
+            &self.paths.user_account,
             toml::to_string_pretty(self.user_account())?,
         )?;
 
@@ -572,24 +590,27 @@ impl ConfigHandler {
     /// # Writing with Mutable Access
     ///
     /// When a mutable reference is used with `ConfigHandler.config`, the `config` field is
-    /// updated and written to the file upon write() is call.
+    /// updated and written to the file upon `write()` is call.
     /// In contrast, the `locked_config` field will not write.
+    ///
+    /// # Errors
+    /// TODO complete docs
     pub fn write_with_mut(&self) -> Result<()> {
         if self.config.has_mut_accessed() {
             fs::write(
-                &self.paths.config_path,
+                &self.paths.config,
                 toml::to_string_pretty(self.config.get())?,
             )?;
         }
         if self.locked_config.has_mut_accessed() {
             fs::write(
-                &self.paths.locked_config_path,
+                &self.paths.locked_config,
                 toml::to_string_pretty(self.locked_config.get())?,
             )?;
         }
         if self.user_account.has_mut_accessed() {
             fs::write(
-                &self.paths.user_account_path,
+                &self.paths.user_account,
                 toml::to_string_pretty(self.user_account())?,
             )?;
         }
@@ -603,7 +624,7 @@ impl ConfigHandler {
     }
 
     /// Add local mod
-    /// # Error
+    /// # Errors
     /// Error when file mods/name not found
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
         // Error when file not found
@@ -615,7 +636,7 @@ impl ConfigHandler {
         }
 
         if !self.has_locked_mod_name(name) {
-            let mc_version = &self.config().game_version.to_owned();
+            let mc_version = &self.config().game_version.clone();
             self.locked_config_mut().add_local_mod(name, mc_version);
         }
 
@@ -623,9 +644,9 @@ impl ConfigHandler {
     }
 
     /// Add unlocal mod with block
-    /// # Error
+    /// # Errors
     /// Error when fetch mod fail
-    pub fn add_mod_unlocal_blocking(&mut self, name: &str, version: &Option<String>) -> Result<()> {
+    pub fn add_mod_unlocal_blocking(&mut self, name: &str, version: Option<&String>) -> Result<()> {
         let version = fetch_version_blocking(name, version, &self.config)?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
@@ -641,9 +662,9 @@ impl ConfigHandler {
     }
 
     /// Add unlocal mod
-    /// # Error
+    /// # Errors
     /// Error when fetch mod fail
-    pub async fn add_mod_unlocal(&mut self, name: &str, version: &Option<String>) -> Result<()> {
+    pub async fn add_mod_unlocal(&mut self, name: &str, version: Option<&String>) -> Result<()> {
         let version = fetch_version(name, version, &self.config).await?.remove(0);
 
         let modconf = ModConfig::from(version.clone());
@@ -659,6 +680,8 @@ impl ConfigHandler {
     }
 
     /// Add mod from Version data
+    /// # Errors
+    /// TODO complete docs
     pub fn add_mod_from(&mut self, name: &str, version: Version) -> Result<()> {
         let modconf = ModConfig::from(version.clone());
         if !self.is_mod_config_match(name, &modconf) {
@@ -676,6 +699,9 @@ impl ConfigHandler {
     /// Remove mod for configs
     /// # Panic
     /// panic when can't found mod in config.lock
+    ///
+    /// # Errors
+    /// TODO complete docs
     pub fn remove_mod(&mut self, name: &str) -> Result<()> {
         let locked_mods = self
             .locked_config
@@ -684,7 +710,7 @@ impl ConfigHandler {
             .ok_or_else(|| anyhow::anyhow!("No mods in locked config"))?;
         let mod_info = locked_mods
             .get(name)
-            .ok_or_else(|| anyhow::anyhow!("Mod '{}' not found in locked config", name))?;
+            .ok_or_else(|| anyhow::anyhow!("Mod '{name}' not found in locked config"))?;
         let file_path = Path::new(&self.config().game_dir)
             .join("mods")
             .join(&mod_info.file_name);
@@ -701,6 +727,17 @@ impl ConfigHandler {
     }
 
     /// Rename file which not list in `config.toml` to `mod_filename.unuse`
+    /// # Errors
+    /// TODO complete docs
+    #[allow(clippy::unnecessary_wraps, reason = "wraps is human readable")]
+    #[allow(
+        clippy::redundant_closure_for_method_calls,
+        reason = "wraps is human readable"
+    )]
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "case_sensitive is need"
+    )]
     pub fn disable_unuse_mods(&self) -> Result<()> {
         let mod_dir = Path::new(&self.config().game_dir).join("mods");
         if fs::metadata(&mod_dir).is_err() {
@@ -735,6 +772,13 @@ impl ConfigHandler {
     }
 
     /// Rename file which list in `config.toml` from `mod_filename.unuse` to `mod_filename`
+    /// # Errors
+    /// # Panics
+    /// TODO complete docs
+    #[allow(
+        clippy::case_sensitive_file_extension_comparisons,
+        reason = "case_sensitive is need"
+    )]
     pub fn enable_used_mods(&self) -> Result<()> {
         let mod_dir = Path::new(&self.config().game_dir).join("mods");
         if fs::metadata(&mod_dir).is_err() {
@@ -768,7 +812,7 @@ impl ConfigHandler {
                     let new_path = Path::new("mods").join(new_name);
                     fs::rename(path, new_path)?;
                 }
-            };
+            }
         }
         Ok(())
     }

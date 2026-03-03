@@ -46,6 +46,8 @@ pub enum InstallType {
     Mods,
 }
 
+/// # Errors
+/// TODO complete docs
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let version_json_file_path = Path::new(&config.game_dir)
         .join("versions")
@@ -94,13 +96,13 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
         println!("fetching fabric loaders version...");
         let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
         if !loaders.iter().any(|x| &x.version == v) {
-            return Err(anyhow::anyhow!("Cant' find the loader version {}", v));
+            return Err(anyhow::anyhow!("Cant' find the loader version {v}"));
         }
         println!("fetching fabric profile...");
         let game_version = Cow::from(&config.game_version);
         let loader_version = Cow::from(v);
         let profile = Profile::fetch(&config.mirror.fabric_meta, &game_version, &loader_version)?;
-        version.merge(&profile)
+        version.merge(&profile);
     }
     Ok(version)
 }
@@ -160,10 +162,11 @@ fn libraries_installtask(
                 url: mirror.to_owned() + path,
                 sha1: x.downloads.artifact.sha1.clone(),
                 message: format!(
-                    "library {:?} installed",
+                    "library {} installed",
                     save_file
                         .file_name()
                         .ok_or_else(|| anyhow::anyhow!("take file name failed"))?
+                        .display()
                 ),
                 save_file,
             })
@@ -215,10 +218,11 @@ fn native_installtask(
                 url: mirror.to_owned() + path,
                 sha1: artifact.sha1.clone(),
                 message: format!(
-                    "library {:?} installed",
+                    "library {} installed",
                     save_file
                         .file_name()
                         .ok_or_else(|| anyhow::anyhow!("take file name failed"))?
+                        .display()
                 ),
                 save_file,
             })

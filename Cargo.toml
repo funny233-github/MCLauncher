@@ -48,3 +48,6 @@ path = "installer"
 
 [dependencies.mc-oauth]
 path = "mc-oauth"
+
+[lints.clippy]
+pedantic = "deny"
