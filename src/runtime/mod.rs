@@ -1,3 +1,23 @@
+//! # Minecraft Runtime Module
+//!
+//! This module handles launching and managing the Minecraft game process.
+//!
+//! ## Main Functionality
+//!
+//! - **Process Spawning**: Creates a new Java process to run Minecraft
+//! - **Argument Generation**: Generates JVM and game launch arguments from configuration
+//! - **Output Streaming**: Captures and forwards game output to the console in real-time
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use launcher::config::ConfigHandler;
+//! use launcher::runtime::gameruntime;
+//!
+//! let config = ConfigHandler::read().expect("Failed to read config");
+//! gameruntime(&config).expect("Failed to launch Minecraft");
+//! ```
+
 use crate::config::ConfigHandler;
 use std::io;
 use std::process::{Command, Stdio};
