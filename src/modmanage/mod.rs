@@ -31,7 +31,7 @@
 //! # Example
 //!
 //! ```no_run
-//! use your_crate::modmanage::{add, update, install};
+//! use launcher::modmanage::{add, update, install};
 //!
 //! // Add a mod from Modrinth
 //! add("fabric-api", None, false, false).expect("Failed to add mod");
@@ -156,12 +156,28 @@ fn filter_versions(
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::fetch_version;
-/// use your_crate::config::RuntimeConfig;
+/// use launcher::modmanage::fetch_version;
+/// use launcher::config::RuntimeConfig;
+/// use launcher::config::MCLoader;
+/// use launcher::config::MCMirror;
 ///
-/// let config = RuntimeConfig { /* ... */ };
+/// # #[tokio::test]
+/// # async fn test() -> anyhow::Result<()> {
+/// let config = RuntimeConfig {
+///     max_memory_size: 1000000,
+///     window_weight: 100,
+///     window_height: 100,
+///     game_dir: "/path/to/game".to_string(),
+///     game_version: "1.16.5".to_string(),
+///     java_path: "/path/to/java".to_string(),
+///     loader: MCLoader::None,
+///     mirror: MCMirror::official_mirror(),
+///     mods: None,
+/// };
 /// let versions = fetch_version("fabric-api", None, &config).await?;
 /// println!("Found {} compatible versions", versions.len());
+/// # Ok(())
+/// # }
 /// ```
 pub async fn fetch_version(
     name: &str,
@@ -235,7 +251,7 @@ pub fn fetch_version_blocking(
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::add;
+/// use launcher::modmanage::add;
 ///
 /// // Add a mod from Modrinth and install it
 /// add("fabric-api", None, false, false)?;
@@ -245,6 +261,8 @@ pub fn fetch_version_blocking(
 ///
 /// // Add a local mod file
 /// add("/path/to/mod.jar", None, true, false)?;
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
@@ -286,10 +304,12 @@ pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool)
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::remove;
+/// use launcher::modmanage::remove;
 ///
 /// remove("fabric-api")?;
 /// println!("Mod removed successfully");
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
@@ -327,13 +347,15 @@ pub fn remove(name: &str) -> Result<()> {
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::update;
+/// use launcher::modmanage::update;
 ///
 /// // Update all mods and install them
 /// update(false)?;
 ///
 /// // Only update configuration, don't install files
 /// update(true)?;
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn update(config_only: bool) -> Result<()> {
     sync_or_update(false)?;
@@ -431,10 +453,12 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
 /// # Example
 ///
 /// ```no_run
-/// use your_crate::modmanage::install;
+/// use launcher::modmanage::install;
 ///
 /// install()?;
 /// println!("All mods installed successfully");
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn install() -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
@@ -491,13 +515,15 @@ pub fn install() -> Result<()> {
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::sync;
+/// use launcher::modmanage::sync;
 ///
 /// // Sync all mods to configured versions and install them
 /// sync(false)?;
 ///
 /// // Only sync configuration, don't install files
 /// sync(true)?;
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn sync(config_only: bool) -> Result<()> {
     sync_or_update(true)?;
@@ -831,10 +857,12 @@ fn clean_file_mods() -> Result<()> {
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::clean;
+/// use launcher::modmanage::clean;
 ///
 /// clean()?;
 /// println!("Cleanup completed successfully");
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn clean() -> Result<()> {
     clean_locked_config_mods()?;
@@ -886,13 +914,15 @@ struct HitsInfo {
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::modmanage::search;
+/// use launcher::modmanage::search;
 ///
 /// // Search for mods (default limit)
 /// search("inventory", None)?;
 ///
 /// // Search with a specific limit
 /// search("inventory", Some(5))?;
+///
+/// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;

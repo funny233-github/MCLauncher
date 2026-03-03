@@ -25,13 +25,21 @@
 //! # Example
 //!
 //! ```no_run
-//! use your_crate::install::install_mc;
-//! use your_crate::config::RuntimeConfig;
+//! use launcher::install::install_mc;
+//! use launcher::config::RuntimeConfig;
+//! use launcher::config::MCLoader;
+//! use launcher::config::MCMirror;
 //!
 //! let config = RuntimeConfig {
+//!     max_memory_size: 1000000,
+//!     window_weight: 100,
+//!     window_height: 100,
 //!     game_dir: "/path/to/game".to_string(),
 //!     game_version: "1.16.5".to_string(),
-//!     // ... other config fields
+//!     java_path: "/path/to/java".to_string(),
+//!     loader: MCLoader::None,
+//!     mirror: MCMirror::official_mirror(),
+//!     mods: None,
 //! };
 //!
 //! install_mc(&config).expect("Installation failed");
@@ -76,7 +84,7 @@ const OS: &str = "osx";
 ///
 /// # Examples
 ///
-/// ```
+/// ```ignore
 /// use regex::Regex;
 ///
 /// let url = "https://libraries.minecraft.net/com/example/lib/1.0.0/lib.jar";
@@ -153,13 +161,21 @@ pub enum InstallType {
 /// # Examples
 ///
 /// ```no_run
-/// use your_crate::install::install_mc;
-/// use your_crate::config::RuntimeConfig;
+/// use launcher::install::install_mc;
+/// use launcher::config::RuntimeConfig;
+/// use launcher::config::MCMirror;
+/// use launcher::config::MCLoader;
 ///
 /// let config = RuntimeConfig {
-///     game_dir: "/path/to/minecraft".to_string(),
+///     max_memory_size: 1000,
+///     window_weight: 100,
+///     window_height: 100,
+///     game_dir: "/path/to/game".to_string(),
 ///     game_version: "1.16.5".to_string(),
-///     // ... other fields
+///     java_path: "/path/to/java".to_string(),
+///     loader: MCLoader::None,
+///     mirror: MCMirror::official_mirror(),
+///     mods: None,
 /// };
 ///
 /// if let Err(e) = install_mc(&config) {

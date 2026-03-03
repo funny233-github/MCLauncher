@@ -35,9 +35,9 @@
 //! # Example
 //!
 //! ```no_run
-//! use your_crate::config::ConfigHandler;
+//! use launcher::config::ConfigHandler;
 //!
-//! let handler = ConfigHandler::new("/path/to/config").expect("Failed to load config");
+//! let handler = ConfigHandler::read().expect("Failed to load config");
 //!
 //! let args = handler.args_provider().expect("Failed to generate arguments");
 //!
@@ -86,7 +86,8 @@ const CLASSPATH_SEPARATOR: &str = ":";
 ///
 /// # Examples
 ///
-/// ```
+/// ```rust,ignore
+/// use std::collections::HashMap;
 /// let valuemap = HashMap::from([
 ///     ("${version}", "1.16.5".into()),
 ///     ("${user}", "Player".into()),
@@ -269,7 +270,8 @@ impl ConfigHandler {
     /// # Examples
     ///
     /// ```no_run
-    /// let handler = ConfigHandler::new("/path/to/config").expect("Failed to load config");
+    /// use launcher::config::ConfigHandler;
+    /// let handler = ConfigHandler::read().expect("Failed to load config");
     /// let args = handler.args_provider().expect("Failed to generate arguments");
     ///
     /// // The args can be passed directly to Process::Command:
