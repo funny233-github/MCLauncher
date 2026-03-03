@@ -47,7 +47,7 @@ jobs:
         # See: https://github.com/actions/runner-images/blob/main/images/ubuntu/Ubuntu2204-Readme.md#rust-tools
         run: cargo build --verbose --release
         env:
-          AZURE_CLIENT_ID: ${{ AZURE_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
 
       - name: Run tests
         run: >
@@ -55,7 +55,7 @@ jobs:
           cargo test --verbose --manifest-path mc-api/Cargo.toml
         # This may fail, but it does not take affects to our artifacts.
         env:
-          AZURE_CLIENT_ID: ${{ AZURE_CLIENT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
         continue-on-error: true
 
       - name: Upload artifact (amd64)
