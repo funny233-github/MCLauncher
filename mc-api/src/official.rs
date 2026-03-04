@@ -701,7 +701,7 @@ impl VersionManifest {
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssetIndex {
-    #[serde[rename = "totalSize"]]
+    #[serde(rename = "totalSize")]
     pub total_size: usize,
     pub id: String,
     pub url: String,

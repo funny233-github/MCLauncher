@@ -482,7 +482,7 @@ impl Projects {
         let client = Client::new();
         let mut err_detail = None;
         if limit.is_some_and(|lim| lim > 100) {
-            return Err(anyhow::anyhow!("limit must < 100, the limit is {limit:?}",));
+            return Err(anyhow::anyhow!("limit must be <= 100, got: {limit:?}"));
         }
         for _ in 0..5 {
             let init = client
@@ -555,7 +555,7 @@ impl Projects {
         let client = reqwest::Client::new();
         let mut err_detail = None;
         if limit.is_some_and(|lim| lim > 100) {
-            return Err(anyhow::anyhow!("limit must < 100, the limit is {limit:?}",));
+            return Err(anyhow::anyhow!("limit must be <= 100, got: {limit:?}"));
         }
         for _ in 0..5 {
             let init = client
