@@ -121,6 +121,19 @@ launcher run
 
 To build MCLauncher from source, you'll need to have Rust's package manager, Cargo, installed.
 
+### Azure Client ID
+
+The `AZURE_CLIENT_ID` environment variable is required for Microsoft OAuth authentication.
+
+**For development**: You can skip this by using offline mode accounts (`launcher account offline <username>`).
+
+**For production**: Register an application in [Azure Portal](https://portal.azure.com/) and set the `AZURE_CLIENT_ID` environment variable during compilation:
+
+```bash
+export AZURE_CLIENT_ID="your_client_id"
+cargo build --release
+```
+
 ### Prerequisites
 
 - Rust 1.70 or higher

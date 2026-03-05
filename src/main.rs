@@ -36,7 +36,7 @@ enum Command {
         fabric: Option<String>,
     },
 
-    /// Running game
+    /// Run the game
     Run,
 
     /// Set Mirror of minecraft api
@@ -141,7 +141,7 @@ fn handle_args() -> anyhow::Result<()> {
     match args.command {
         Command::Init => {
             ConfigHandler::init()?;
-            println!("Initialized empty game direction");
+            println!("Initialized empty game directory");
         }
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
@@ -200,10 +200,15 @@ fn handle_args() -> anyhow::Result<()> {
         Command::Mirror(mirror) => {
             let mut handle = ConfigHandler::read()?;
             match mirror {
-                Mirrors::Official => handle.config_mut().mirror = MCMirror::official_mirror(),
-                Mirrors::Bmclapi => handle.config_mut().mirror = MCMirror::bmcl_mirror(),
+                Mirrors::Official => {
+                    handle.config_mut().mirror = MCMirror::official_mirror();
+                    println!("Set official mirror");
+                }
+                Mirrors::Bmclapi => {
+                    handle.config_mut().mirror = MCMirror::bmcl_mirror();
+                    println!("Set BMCLAPI mirror");
+                }
             }
-            println!("Set official mirror");
         }
         Command::Mod(option) => match option {
             ModManage::Add {
