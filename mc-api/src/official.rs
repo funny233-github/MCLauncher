@@ -100,7 +100,8 @@
 //! # Ok::<(), anyhow::Error>(())
 //!
 
-use super::{DomainReplacer, Sha1Compare};
+use super::DomainReplacer;
+use crate::fetcher::FetcherBuilder;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
 
@@ -557,8 +558,7 @@ impl VersionManifest {
     /// - Other compatible mirrors
     pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
         let url = mirror.to_owned() + "mc/game/version_manifest.json";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 
     /// Filters and returns a list of version IDs based on the specified type.
@@ -824,10 +824,8 @@ impl Assets {
     /// in the `AssetIndex` structure to ensure integrity.
     pub fn fetch(asset_index: &AssetIndex, mirror: &str) -> anyhow::Result<Self> {
         let url = asset_index.url.replace_domain(mirror);
-        let client = reqwest::blocking::Client::new();
         let sha1 = &asset_index.sha1;
-        let data = fetch!(client, url, sha1, text)?;
-        Ok(serde_json::from_str(&data)?)
+        FetcherBuilder::fetch(&url).sha1(sha1).execute()?.json()
     }
 
     /// Installs the assets index JSON file to the specified path.
@@ -1122,8 +1120,7 @@ impl Version {
     /// ```
     pub fn fetch(manifest: &VersionManifest, version: &str, mirror: &str) -> anyhow::Result<Self> {
         let url = manifest.url(version).replace_domain(mirror);
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 
     /// Installs the version JSON file to the specified path.

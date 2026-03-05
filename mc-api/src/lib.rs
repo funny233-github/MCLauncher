@@ -114,109 +114,6 @@
 use regex::Regex;
 use sha1::{Digest, Sha1};
 use std::cmp::Ordering;
-/// Macro for fetching data from URLs with retry logic and optional SHA1 verification.
-///
-/// This macro provides a convenient way to fetch data from HTTP endpoints with
-/// automatic retry logic, timeout handling, and optional integrity verification.
-///
-/// # Syntax
-///
-/// ```rust,ignore
-/// fetch!(client, url, response_type)
-/// fetch!(client, url, sha1_hash, response_type)
-/// ```
-///
-/// # Parameters
-///
-/// * `client` - The reqwest client to use for the request
-/// * `url` - The URL to fetch from (must implement `Into<String>`)
-/// * `sha1_hash` - (Optional) Expected SHA1 hash for verification
-/// * `response_type` - The method to call on the response (`json`, `text`, `bytes`, etc.)
-///
-/// # Retry Behavior
-///
-/// - Makes up to 5 attempts to fetch the URL
-/// - Waits 10 seconds between retry attempts
-/// - Times out after 100 seconds per attempt
-/// - Returns error if all attempts fail
-///
-/// # SHA1 Verification
-///
-/// When `sha1_hash` is provided:
-/// - Downloaded data is verified against the expected hash
-/// - Downloads are retried if verification fails
-/// - Returns error if hash doesn't match after all attempts
-///
-/// # User Agent
-///
-/// All requests use the user agent: `github.com/funny233-github/MCLauncher`
-///
-/// # Examples
-///
-/// ```rust,ignore
-/// use reqwest::blocking::Client;
-///
-/// let client = Client::new();
-/// let url = "https://example.com/data.json".to_string();
-///
-/// // Without SHA1 verification
-/// let data: serde_json::Value = fetch!(client, url, json).unwrap();
-///
-/// // With SHA1 verification
-/// let sha1 = "abc123...".to_string();
-/// let text: String = fetch!(client, url, sha1, text).unwrap();
-/// ```
-///
-/// # Error Handling
-///
-/// Returns `anyhow::Result<T>` where `T` is the type returned by the response method.
-/// Errors include network failures, timeouts, and SHA1 verification failures.
-macro_rules! fetch {
-    ($client:ident,$url:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch {} fail", $url));
-        for _ in 0..5 {
-            let send = $client
-                .get(&$url)
-                .header(
-                    reqwest::header::USER_AGENT,
-                    "github.com/funny233-github/MCLauncher",
-                )
-                .timeout(std::time::Duration::from_secs(100))
-                .send();
-            let data = send.and_then(|x| x.$type());
-            if let Ok(_data) = data {
-                res = Ok(_data);
-                break;
-            }
-            log::warn!("fetch fail, then retry");
-            std::thread::sleep(std::time::Duration::from_secs(10));
-        }
-        res
-    }};
-    ($client:ident,$url:ident,$sha1:ident, $type:ident) => {{
-        let mut res = Err(anyhow::anyhow!("fetch {} fail", $url));
-        for _ in 0..5 {
-            let send = $client
-                .get(&$url)
-                .header(
-                    reqwest::header::USER_AGENT,
-                    "github.com/funny233-github/MCLauncher",
-                )
-                .timeout(std::time::Duration::from_secs(100))
-                .send();
-            let data = send.and_then(|x| x.$type());
-            if let Ok(_data) = data {
-                if _data.sha1_cmp(&$sha1).is_eq() {
-                    res = Ok(_data);
-                    break;
-                }
-            }
-            log::warn!("fetch fail, then retry");
-            std::thread::sleep(std::time::Duration::from_secs(10));
-        }
-        res
-    }};
-}
 
 /// Trait for SHA1 hash comparison.
 ///
@@ -406,4 +303,6 @@ where
 }
 
 pub mod fabric;
+pub mod fetcher;
+pub mod neoforge;
 pub mod official;

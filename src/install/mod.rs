@@ -264,9 +264,7 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
             return Err(anyhow::anyhow!("Cant' find the loader version {v}"));
         }
         println!("fetching fabric profile...");
-        let game_version = Cow::from(&config.game_version);
-        let loader_version = Cow::from(v);
-        let profile = Profile::fetch(&config.mirror.fabric_meta, &game_version, &loader_version)?;
+        let profile = Profile::fetch(&config.mirror.fabric_meta, &config.game_version, v)?;
         version.merge(&profile);
     }
     Ok(version)

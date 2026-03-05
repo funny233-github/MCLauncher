@@ -77,6 +77,7 @@
 //! See the [Fabric Meta API documentation](https://github.com/FabricMC/fabric-meta)
 
 use super::official;
+use crate::fetcher::FetcherBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
@@ -146,8 +147,7 @@ impl Game {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/game";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
@@ -230,8 +230,7 @@ impl Yarn {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/yarn";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
@@ -308,8 +307,7 @@ impl Loader {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/loader";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
@@ -383,8 +381,7 @@ impl Intermediary {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/intermediary";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
@@ -488,8 +485,7 @@ impl Versions {
     /// ```
     pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
         let url = mirror.to_owned() + "v2/versions";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
@@ -720,8 +716,7 @@ impl Profile {
             + "/"
             + loader_version.replace(' ', "%20").as_ref()
             + "/profile/json";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
