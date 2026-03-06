@@ -3,6 +3,59 @@ use anyhow::Result;
 use reqwest::blocking::Client;
 use std::time::Duration;
 
+/// Fetcher Module
+///
+/// This module provides a type-safe, builder-pattern based HTTP fetcher
+/// with support for JSON/XML deserialization, SHA1 verification,
+/// and automatic retry logic.
+///
+/// # Features
+///
+/// - **Type-safe API**: Builder pattern with compile-time type checking
+/// - **Multiple formats**: Support for JSON, XML, and plain text
+/// - **SHA1 verification**: Optional integrity checking for critical data
+/// - **Retry logic**: Configurable retry attempts
+/// - **Timeout handling**: Configurable request timeout
+///
+/// # Basic Usage
+///
+/// ```no_run
+/// use mc_api::fetcher::FetcherBuilder;
+///
+/// // Fetch JSON data
+/// let data: String = FetcherBuilder::fetch("http://example.com/data.json")
+///     .json()
+///     .execute()?
+///     .json()?;
+///
+/// // Fetch XML data
+/// let xml_data: String = FetcherBuilder::fetch("http://example.com/data.xml")
+///     .xml()
+///     .execute()?
+///     .xml()?;
+///
+/// // Fetch plain text
+/// let text: String = FetcherBuilder::fetch("http://example.com/text.txt")
+///     .execute::<String>()?
+///     .text()?;
+///
+/// // Fetch with SHA1 verification
+/// let verified_text: String = FetcherBuilder::fetch("http://example.com/asset.json")
+///     .sha1("abc123...")
+///     .execute::<String>()?
+///     .text()?;
+/// # Ok::<(),anyhow::Error>(())
+/// ```
+///
+/// # Comparison with fetch! Macro
+///
+/// | Feature | fetch! | FetcherBuilder |
+/// |---------|--------|----------------|
+/// | Type safety | ❌ Macro | ✅ Compile-time checking |
+/// | Builder pattern | ❌ No | ✅ Fluent API |
+/// | Configurable | ❌ Hardcoded | ✅ Flexible parameters |
+/// | SHA1 verification | ✅ Optional | ✅ Optional |
+/// | Retry logic | ✅ Fixed 5 times | ✅ Configurable |
 #[derive(Default)]
 pub enum DeserializeType {
     #[default]
@@ -11,6 +64,16 @@ pub enum DeserializeType {
     Xml,
 }
 
+/// Builder for configuring and executing HTTP requests with retry logic.
+///
+/// # Fields
+///
+/// * `url` - The URL to fetch data from
+/// * `deserialize_type` - How to parse the response (Json, Xml, or None for text)
+/// * `retry` - Number of retry attempts (default: 5)
+/// * `timeout` - Request timeout in seconds (default: 100)
+/// * `wait_time` - Delay between retry attempts in seconds (default: 10)
+/// * `sha1` - Optional SHA1 hash for response verification
 pub struct FetcherBuilder {
     pub url: String,
     pub deserialize_type: DeserializeType,
@@ -20,6 +83,37 @@ pub struct FetcherBuilder {
     pub sha1: Option<String>,
 }
 
+/// Result type returned by `FetcherBuilder::execute()`.
+///
+/// Contains deserialized data in the requested format.
+///
+/// # Type Parameters
+///
+/// * `T` - The deserialized type for Json/Xml variants, or unused for Text
+///
+/// # Variants
+///
+/// * `Text(String)` - Raw text response when `DeserializeType::None` is used
+/// * `Json(T)` - JSON deserialized into type `T`
+/// * `Xml(T)` - XML deserialized into type `T`
+///
+/// # Example
+///
+/// ```no_run
+/// use mc_api::fetcher::FetcherBuilder;
+///
+/// // Get raw text
+/// let text: String = FetcherBuilder::fetch("http://example.com/data.txt")
+///     .execute::<String>()?
+///     .text()?;
+///
+/// // Get JSON data
+/// let data: String = FetcherBuilder::fetch("http://example.com/data.json")
+///     .json()
+///     .execute()?
+///     .json()?;
+/// # Ok::<(),anyhow::Error>(())
+/// ```
 pub enum FetcherResult<T: serde::de::DeserializeOwned> {
     Text(String),
     Json(T),
@@ -27,8 +121,11 @@ pub enum FetcherResult<T: serde::de::DeserializeOwned> {
 }
 
 impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
+    /// Extracts the raw text from the result.
+    ///
     /// # Errors
-    /// TODO complete docs
+    ///
+    /// Returns an error if the result is not in the `Text` variant.
     pub fn text(self) -> Result<String> {
         if let FetcherResult::Text(res) = self {
             Ok(res)
@@ -37,8 +134,11 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         }
     }
 
+    /// Extracts the JSON data from the result.
+    ///
     /// # Errors
-    /// TODO complete docs
+    ///
+    /// Returns an error if the result is not in the `Json` variant.
     pub fn json(self) -> Result<T> {
         if let FetcherResult::Json(res) = self {
             Ok(res)
@@ -47,8 +147,11 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         }
     }
 
+    /// Extracts the XML data from the result.
+    ///
     /// # Errors
-    /// TODO complete docs
+    ///
+    /// Returns an error if the result is not in the `Xml` variant.
     pub fn xml(self) -> Result<T> {
         if let FetcherResult::Xml(res) = self {
             Ok(res)

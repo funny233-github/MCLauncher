@@ -53,7 +53,6 @@ use mc_api::{
 };
 use regex::Regex;
 use std::{
-    borrow::Cow,
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
