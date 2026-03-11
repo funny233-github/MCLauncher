@@ -59,9 +59,10 @@ use std::time::Duration;
 #[derive(Default)]
 pub enum DeserializeType {
     #[default]
-    None,
+    Byte,
     Json,
     Xml,
+    Text,
 }
 
 /// Builder for configuring and executing HTTP requests with retry logic.
@@ -116,11 +117,21 @@ pub struct FetcherBuilder {
 /// ```
 pub enum FetcherResult<T: serde::de::DeserializeOwned> {
     Text(String),
+    Byte(Vec<u8>),
     Json(T),
     Xml(T),
 }
 
 impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
+    /// # Errors
+    /// TODO complete docs
+    pub fn byte(self) -> Result<Vec<u8>> {
+        if let FetcherResult::Byte(res) = self {
+            Ok(res)
+        } else {
+            Err(anyhow::anyhow!("TODO complete error"))?
+        }
+    }
     /// Extracts the raw text from the result.
     ///
     /// # Errors
@@ -200,6 +211,22 @@ impl FetcherBuilder {
     }
 
     #[must_use]
+    pub fn text(self) -> FetcherBuilder {
+        Self {
+            deserialize_type: DeserializeType::Text,
+            ..self
+        }
+    }
+
+    #[must_use]
+    pub fn byte(self) -> FetcherBuilder {
+        Self {
+            deserialize_type: DeserializeType::Byte,
+            ..self
+        }
+    }
+
+    #[must_use]
     pub fn retry(self, num: u64) -> FetcherBuilder {
         Self { retry: num, ..self }
     }
@@ -249,6 +276,15 @@ impl FetcherBuilder {
                 .timeout(self.timeout)
                 .send();
             if let Ok(send) = send {
+                if let DeserializeType::Byte = self.deserialize_type {
+                    let data = send.bytes()?;
+                    if let Some(sha1) = self.sha1 {
+                        if data.sha1_cmp(&sha1).is_ne() {
+                            break;
+                        }
+                    }
+                    return Ok(FetcherResult::Byte(data.into()));
+                }
                 let data = send.text()?;
                 if let Some(sha1) = self.sha1 {
                     if data.sha1_cmp(&sha1).is_ne() {
@@ -256,14 +292,17 @@ impl FetcherBuilder {
                     }
                 }
                 match self.deserialize_type {
-                    DeserializeType::None => {
+                    DeserializeType::Text => {
                         return Ok(FetcherResult::Text(data));
                     }
                     DeserializeType::Json => {
-                        return Ok(FetcherResult::Json(serde_json::from_str(data.as_str())?))
+                        return Ok(FetcherResult::Json(serde_json::from_str(&data)?))
                     }
                     DeserializeType::Xml => {
-                        return Ok(FetcherResult::Xml(quick_xml::de::from_str(data.as_str())?))
+                        return Ok(FetcherResult::Xml(quick_xml::de::from_str(&data)?))
+                    }
+                    DeserializeType::Byte => {
+                        return Err(anyhow::anyhow!("TODO complete error message"))
                     }
                 }
             }

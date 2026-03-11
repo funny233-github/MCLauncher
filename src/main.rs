@@ -4,7 +4,8 @@ use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
 use launcher::install::install_mc;
 use launcher::modmanage;
 use launcher::runtime::gameruntime;
-use mc_api::{fabric::Loader, official::VersionManifest};
+use mc_api::{fabric, neoforge, official::VersionManifest};
+use version_compare::Version;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, styles = style::CLAP_STYLING)]
@@ -75,6 +76,7 @@ enum Account {
 #[derive(Subcommand, Debug)]
 enum Loaders {
     Fabric,
+    Neoforge,
 }
 
 #[derive(Subcommand, Debug)]
@@ -146,22 +148,36 @@ fn handle_args() -> anyhow::Result<()> {
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
             match sub {
-                ListSub::MC {
-                    mc: version_type,
-                    limit: list_limit,
-                } => {
+                ListSub::MC { mc, limit } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
-                        .list(&version_type.into());
-                    print_version_list("Minecraft", &list, list_limit);
+                        .list(&mc.into());
+                    print_version_list("Minecraft", &list, limit);
                 }
-                ListSub::Loader {
-                    loader: _loader,
-                    limit: list_limit,
-                } => {
-                    let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
-                    let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
-                    print_version_list("fabric loader", &list, list_limit);
-                }
+                ListSub::Loader { loader, limit } => match loader {
+                    Loaders::Fabric => {
+                        let l = fabric::Loader::fetch(&handle.config().mirror.fabric_meta)?;
+                        let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
+                        print_version_list("fabric loader", &list, limit);
+                    }
+                    Loaders::Neoforge => {
+                        let l = neoforge::Loader::fetch(&handle.config().mirror.neoforge_neoforge)?;
+
+                        let mc_version = Version::from(&handle.config().game_version).unwrap();
+
+                        let list: Vec<String> = l
+                            .versioning
+                            .versions
+                            .version
+                            .into_iter()
+                            .filter(|x| {
+                                let neoforge_version = Version::from(x).unwrap();
+                                mc_version.part(1) == neoforge_version.part(0)
+                                    && mc_version.part(2) == neoforge_version.part(1)
+                            })
+                            .collect();
+                        print_version_list("neoforge loader", &list, limit);
+                    }
+                },
             }
         }
         Command::Account(account_type) => {

@@ -64,6 +64,8 @@ pub struct MCMirror {
     pub libraries: String,
     pub fabric_meta: String,
     pub fabric_maven: String,
+    pub neoforge_forge: String,
+    pub neoforge_neoforge: String,
 }
 
 impl MCMirror {
@@ -80,6 +82,8 @@ impl MCMirror {
             libraries: "https://libraries.minecraft.net/".into(),
             fabric_meta: "https://meta.fabricmc.net/".into(),
             fabric_maven: "https://maven.fabricmc.net/".into(),
+            neoforge_forge: "https://maven.neoforged.net/releases/net/neoforged/forge".into(),
+            neoforge_neoforge: "https://maven.neoforged.net/releases/net/neoforged/neoforge".into(),
         }
     }
 
@@ -96,6 +100,9 @@ impl MCMirror {
             libraries: "https://bmclapi2.bangbang93.com/maven/".into(),
             fabric_meta: "https://bmclapi2.bangbang93.com/fabric-meta/".into(),
             fabric_maven: "https://bmclapi2.bangbang93.com/maven/".into(),
+            neoforge_forge: "https://bmclapi2.bangbang93.com/maven/net/neoforged/forge".into(),
+            neoforge_neoforge: "https://bmclapi2.bangbang93.com/maven/net/neoforged/neoforge"
+                .into(),
         }
     }
 }
