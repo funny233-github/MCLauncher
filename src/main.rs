@@ -1,9 +1,9 @@
 use clap::{Parser, Subcommand};
 use clap_cargo::style;
-use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
-use launcher::install::install_mc;
-use launcher::modmanage;
-use launcher::runtime::gameruntime;
+use gluon::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
+use gluon::install::install_mc;
+use gluon::modmanage;
+use gluon::runtime::gameruntime;
 use mc_api::{fabric, neoforge, official::VersionManifest};
 use version_compare::Version;
 
