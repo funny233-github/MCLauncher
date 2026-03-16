@@ -8,6 +8,7 @@ on:
     branches: ["master"]
   pull_request:
     branches: ["master"]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -65,8 +66,8 @@ jobs:
         with:
           # This action will package files into a compressed archives,
           # just seperate them with the archive name.
-          name: launcher-${{ matrix.plat }}_amd64
-          path: target/release/launcher*
+          name: gluon-${{ matrix.plat }}_amd64
+          path: target/release/gluon*
 
       - name: Upload artifact (arm64)
         # While `macos-latest` defaults to Apple Silicon chip.
@@ -75,5 +76,5 @@ jobs:
         with:
           # This action will package files into a compressed archives,
           # just seperate them with the archive name.
-          name: launcher-${{ matrix.plat }}_arm64
-          path: target/release/launcher*
+          name: gluon-${{ matrix.plat }}_arm64
+          path: target/release/gluon*
