@@ -1,34 +1,14 @@
 //! Minecraft game files and libraries installation module.
 //!
-//! This module provides functionality to download and install Minecraft game files,
-//! including version manifests, libraries, assets, native libraries, and optional
-//! mod loaders like Fabric.
-//!
-//! # Architecture
-//!
-//! The installation process is divided into several stages:
-//!
-//! 1. **Version fetching** - Retrieves version information and manifests
-//! 2. **Dependency resolution** - Determines which libraries and assets are needed
-//! 3. **Download tasks** - Creates download tasks for all required files
-//! 4. **Installation** - Executes downloads and extracts native libraries
-//!
-//! # Supported Features
-//!
-//! - Official Minecraft versions via version manifest
-//! - Fabric mod loader integration
-//! - Mirror support for faster downloads (e.g., BMCLAPI)
-//! - SHA-1 checksum verification
-//! - Concurrent downloads
-//! - Cross-platform native library extraction
+//! Downloads and installs Minecraft game files including version manifests,
+//! libraries, assets, native libraries, and optional mod loaders like Fabric.
 //!
 //! # Example
-//!
 //! ```no_run
-//! use launcher::install::install_mc;
-//! use launcher::config::RuntimeConfig;
-//! use launcher::config::MCLoader;
-//! use launcher::config::MCMirror;
+//! use gluon::install::install_mc;
+//! use gluon::config::RuntimeConfig;
+//! use gluon::config::MCLoader;
+//! use gluon::config::MCMirror;
 //!
 //! let config = RuntimeConfig {
 //!     max_memory_size: 1000000,
@@ -60,45 +40,27 @@ use std::{
 use std::{fs::File, io::Read};
 use zip::ZipArchive;
 
-/// Operating system identifier for Windows.
+/// Operating system identifier set at compile time.
 #[cfg(target_os = "windows")]
 const OS: &str = "windows";
 
-/// Operating system identifier for Linux.
+/// Operating system identifier set at compile time.
 #[cfg(target_os = "linux")]
 const OS: &str = "linux";
 
-/// Operating system identifier for macOS.
+/// Operating system identifier set at compile time.
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
 /// Trait for replacing download domains in URLs.
 ///
-/// This trait is used to support alternative download mirrors by replacing
-/// the base domain in URLs while preserving the path structure.
-///
-/// # Type Parameters
-///
-/// * `T` - The output type after domain replacement
-///
-/// # Examples
-///
-/// ```ignore
-/// use regex::Regex;
-///
-/// let url = "https://libraries.minecraft.net/com/example/lib/1.0.0/lib.jar";
-/// let new_url = url.replace_domain("https://bmclapi2.bangbang93.com/").unwrap();
-/// ```
+/// Supports alternative download mirrors by replacing the base domain in URLs
+/// while preserving the path structure.
 trait DomainReplacer<T> {
     /// Replaces the domain part of the URL with a new domain.
     ///
-    /// # Arguments
-    ///
-    /// * `domain` - The new domain to use (e.g., `<https://mirror.example.com/>`)
-    ///
     /// # Errors
-    ///
-    /// Returns an error if the URL doesn't match the expected pattern.
+    /// - `anyhow::Error` if URL doesn't match the expected pattern
     fn replace_domain(&self, domain: &str) -> anyhow::Result<T>;
 }
 
@@ -131,39 +93,15 @@ pub enum InstallType {
 
 /// Installs Minecraft game files and libraries.
 ///
-/// This is the main entry point for Minecraft installation. It handles the complete
-/// installation process including downloading version manifests, libraries, assets,
-/// client JAR, and native libraries. It also supports optional Fabric mod loader.
+/// Handles the complete installation process including downloading version manifests,
+/// libraries, assets, client JAR, and native libraries. Supports optional Fabric mod loader.
 ///
-/// # Installation Process
-///
-/// 1. Fetches and caches the version manifest JSON
-/// 2. Creates the native library directory
-/// 3. Downloads all dependencies (libraries, assets, client, natives)
-/// 4. Extracts native libraries to the game directory
-///
-/// # Arguments
-///
-/// * `config` - Runtime configuration including game directory, version, and mirror URLs
-///
-/// # Errors
-///
-/// Returns an error if:
-/// - Version manifest cannot be downloaded or parsed
-/// - The specified Minecraft version is not found
-/// - Libraries cannot be downloaded
-/// - Assets cannot be downloaded
-/// - Native libraries cannot be extracted
-/// - File system operations fail
-/// - Network errors occur during download
-///
-/// # Examples
-///
+/// # Example
 /// ```no_run
-/// use launcher::install::install_mc;
-/// use launcher::config::RuntimeConfig;
-/// use launcher::config::MCMirror;
-/// use launcher::config::MCLoader;
+/// use gluon::install::install_mc;
+/// use gluon::config::RuntimeConfig;
+/// use gluon::config::MCMirror;
+/// use gluon::config::MCLoader;
 ///
 /// let config = RuntimeConfig {
 ///     max_memory_size: 1000,
@@ -181,6 +119,15 @@ pub enum InstallType {
 ///     eprintln!("Installation failed: {}", e);
 /// }
 /// ```
+///
+/// # Errors
+/// - `anyhow::Error` if version manifest cannot be downloaded or parsed
+/// - `anyhow::Error` if the specified Minecraft version is not found
+/// - `anyhow::Error` if libraries cannot be downloaded
+/// - `anyhow::Error` if assets cannot be downloaded
+/// - `anyhow::Error` if native libraries cannot be extracted
+/// - `anyhow::Error` if file system operations fail
+/// - `anyhow::Error` if network errors occur during download
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     let version_json_file_path = Path::new(&config.game_dir)
         .join("versions")
@@ -206,35 +153,14 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 
 /// Fetches the version manifest for the specified Minecraft version.
 ///
-/// This function downloads the version manifest, verifies the requested version
-/// exists, and optionally merges Fabric loader information if configured.
-///
-/// # Arguments
-///
-/// * `config` - Runtime configuration containing game version and mirror URLs
-///
-/// # Returns
-///
-/// A `Version` object containing all version information including:
-/// - Main Minecraft version details
-/// - Library dependencies
-/// - Asset index information
-/// - (Optional) Fabric loader modifications
+/// Downloads the version manifest, verifies the requested version exists,
+/// and optionally merges Fabric loader information if configured.
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - The version manifest cannot be fetched
-/// - The requested game version is not found in the manifest
-/// - A Fabric loader version is specified but not found
-/// - The Fabric profile cannot be fetched or merged
-///
-/// # Flow
-///
-/// 1. Download version manifest from configured mirror
-/// 2. Verify requested version exists
-/// 3. Download version JSON for the specified version
-/// 4. If Fabric is configured: fetch loader and profile, merge into version
+/// - `anyhow::Error` if the version manifest cannot be fetched
+/// - `anyhow::Error` if the requested game version is not found in manifest
+/// - `anyhow::Error` if a Fabric loader version is specified but not found
+/// - `anyhow::Error` if the Fabric profile cannot be fetched or merged
 fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
@@ -271,32 +197,15 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
 
 /// Installs all game dependencies for a specific version.
 ///
-/// This function orchestrates the installation of all required game files:
-/// assets, libraries, client JAR, and native libraries. It creates download
-/// tasks for each file type and executes them concurrently.
-///
-/// # Arguments
-///
-/// * `config` - Runtime configuration with game directory and mirror URLs
-/// * `version` - Version information containing dependency metadata
+/// Orchestrates the installation of all required game files: assets, libraries,
+/// client JAR, and native libraries. Creates download tasks for each file type
+/// and executes them concurrently.
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - Asset index cannot be fetched
-/// - Download task creation fails
-/// - Download execution fails
-/// - Native library extraction fails
-///
-/// # Installation Stages
-///
-/// 1. Fetch and cache the asset index
-/// 2. Create download tasks for assets
-/// 3. Create download tasks for libraries
-/// 4. Create download task for client JAR
-/// 5. Create download tasks for native libraries
-/// 6. Execute all downloads in parallel
-/// 7. Extract native libraries from downloaded JARs
+/// - `anyhow::Error` if asset index cannot be fetched
+/// - `anyhow::Error` if download task creation fails
+/// - `anyhow::Error` if download execution fails
+/// - `anyhow::Error` if native library extraction fails
 fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Result<()> {
     let asset_index_file = Path::new(&config.game_dir)
         .join("assets")
@@ -333,28 +242,10 @@ fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Re
 ///
 /// Filters the version's library list to include only libraries that are
 /// compatible with the current platform and OS, then creates download tasks
-/// for each library.
-///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `libraries_mirror` - Mirror URL for standard Minecraft libraries
-/// * `fabric_maven_mirror` - Mirror URL for Fabric-specific libraries
-/// * `version_json` - Version metadata containing library information
-///
-/// # Returns
-///
-/// A vector of `InstallTask` objects, one for each library that needs to be downloaded.
+/// for each library. Fabric libraries are downloaded from the Fabric Maven mirror.
 ///
 /// # Errors
-///
-/// Returns an error if any library's path cannot be constructed or extracted.
-///
-/// # Note
-///
-/// - Fabric libraries are downloaded from the Fabric Maven mirror
-/// - Standard libraries are downloaded from the libraries mirror
-/// - Only libraries for the current platform are included
+/// - `anyhow::Error` if any library's path cannot be constructed or extracted
 fn libraries_installtask(
     game_dir: &str,
     libraries_mirror: &str,
@@ -390,11 +281,8 @@ fn libraries_installtask(
         .collect()
 }
 
-/// Tests the library download task creation.
-///
 /// Verifies that library install tasks are correctly generated for a
-/// specific Minecraft version. This test uses a real version manifest
-/// from a public mirror.
+/// specific Minecraft version.
 #[test]
 fn test_libraries_installtask() {
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
@@ -412,30 +300,13 @@ fn test_libraries_installtask() {
 ///
 /// Native libraries are platform-specific JAR files containing compiled
 /// code (e.g., .so files on Linux, .dll files on Windows, .dylib on macOS).
-/// These need to be downloaded and then extracted.
-///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `mirror` - Mirror URL for downloading native libraries
-/// * `version_json` - Version metadata containing native library information
-///
-/// # Returns
-///
-/// A vector of `InstallTask` objects, one for each native library that needs
-/// to be downloaded for the current platform.
+/// These need to be downloaded and then extracted. Uses the `OS` constant
+/// which is set at compile time based on the target platform.
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - No native classifiers are defined for the library
-/// - The current OS is not supported by the library
-/// - The path cannot be constructed
-///
-/// # Platform Detection
-///
-/// Uses the `OS` constant which is set at compile time based on the target
-/// platform (`windows`, `linux`, or `osx` for macOS).
+/// - `anyhow::Error` if no native classifiers are defined for the library
+/// - `anyhow::Error` if the current OS is not supported by the library
+/// - `anyhow::Error` if the path cannot be constructed
 fn native_installtask(
     game_dir: &str,
     mirror: &str,
@@ -479,11 +350,8 @@ fn native_installtask(
         .collect()
 }
 
-/// Tests the native library download task creation.
-///
 /// Verifies that native library install tasks are correctly generated for
-/// the current platform. This test ensures that platform-specific native
-/// libraries are properly identified.
+/// the current platform.
 #[test]
 fn test_native_installtask() {
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
@@ -497,29 +365,14 @@ fn test_native_installtask() {
 
 /// Extracts native libraries from downloaded JAR files.
 ///
-/// This function extracts platform-specific native libraries (e.g., .so files)
+/// Extracts platform-specific native libraries (e.g., .so files)
 /// from their JAR containers and places them in the game's natives directory.
 ///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `version_json` - Version metadata containing native library information
-///
 /// # Errors
-///
-/// Returns an error if:
-/// - No native classifiers are defined for a library
-/// - The current OS is not supported
-/// - The JAR file cannot be opened
-/// - File extraction fails
-///
-/// # Extraction Process
-///
-/// 1. Iterates through all libraries in the version
-/// 2. Filters for native libraries for the current platform
-/// 3. Opens each library JAR file
-/// 4. Extracts native files (e.g., .so) to the natives directory
-/// 5. Preserves directory structure within the natives folder
+/// - `anyhow::Error` if no native classifiers are defined for a library
+/// - `anyhow::Error` if the current OS is not supported
+/// - `anyhow::Error` if the JAR file cannot be opened
+/// - `anyhow::Error` if file extraction fails
 fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> {
     let libraries = &version_json.libraries;
     libraries
@@ -547,32 +400,15 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
 
 /// Extracts native files from a JAR archive.
 ///
-/// This is a helper function that extracts platform-specific native files
-/// (e.g., .so files on Linux) from a JAR file to the game's natives directory.
-///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `path` - Path to the JAR file containing native libraries
+/// Extracts platform-specific native files (e.g., .so files on Linux) from a
+/// JAR file to the game's natives directory. The regex pattern currently only
+/// matches .so files (Linux). This should be made platform-aware for Windows (.dll)
+/// and macOS (.dylib) support.
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - The JAR file cannot be opened
-/// - A directory path cannot be extracted
-/// - File creation fails
-///
-/// # Extraction Rules
-///
-/// - Only extracts files matching the platform-specific extension (.so on Linux)
-/// - Skips directories within the JAR
-/// - Preserves the directory structure in the output
-/// - Creates parent directories as needed
-///
-/// # Note
-///
-/// The regex pattern currently only matches .so files (Linux). This should
-/// be made platform-aware for Windows (.dll) and macOS (.dylib) support.
+/// - `anyhow::Error` if the JAR file cannot be opened
+/// - `anyhow::Error` if a directory path cannot be extracted
+/// - `anyhow::Error` if file creation fails
 fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
     let jar_file = fs::File::open(path)?;
     let mut zip = ZipArchive::new(jar_file)?;
@@ -596,32 +432,14 @@ fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
 
 /// Creates a download task for the Minecraft client JAR.
 ///
-/// The client JAR is the main executable file for Minecraft. This function
-/// constructs the download task including URL replacement for mirror support.
-///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `game_version` - Version string (e.g., "1.16.5")
-/// * `client_mirror` - Mirror URL to use for client downloads
-/// * `version_json` - Version metadata containing client download information
-///
-/// # Returns
-///
-/// An `InstallTask` configured to download the client JAR to the appropriate
-/// location in the versions directory.
+/// The client JAR is the main executable file for Minecraft. Constructs the
+/// download task including URL replacement for mirror support. The client JAR is
+/// saved to: `{game_dir}/versions/{game_version}/{game_version}.jar`
 ///
 /// # Errors
-///
-/// Returns an error if:
-/// - The client URL cannot be extracted from version metadata
-/// - Domain replacement fails
-/// - The SHA-1 checksum cannot be extracted
-///
-/// # File Location
-///
-/// The client JAR is saved to:
-/// `{game_dir}/versions/{game_version}/{game_version}.jar`
+/// - `anyhow::Error` if the client URL cannot be extracted from version metadata
+/// - `anyhow::Error` if domain replacement fails
+/// - `anyhow::Error` if the SHA-1 checksum cannot be extracted
 fn client_installtask(
     game_dir: &str,
     game_version: &str,
@@ -648,8 +466,6 @@ fn client_installtask(
     })
 }
 
-/// Tests the client JAR download task creation.
-///
 /// Verifies that the client install task is correctly generated with proper
 /// URL replacement and file path construction.
 #[test]
@@ -667,34 +483,12 @@ fn test_client_installtask() {
 /// Creates download tasks for all game assets.
 ///
 /// Assets include textures, sounds, models, and other game resources.
-/// This function creates a download task for each asset file based on its
-/// SHA-1 hash.
-///
-/// # Arguments
-///
-/// * `game_dir` - Base directory for game installation
-/// * `assets_mirror` - Mirror URL for asset downloads
-/// * `asset_json` - Asset index metadata containing file hashes
-///
-/// # Returns
-///
-/// A vector of `InstallTask` objects, one for each asset that needs to be downloaded.
+/// Creates a download task for each asset file based on its SHA-1 hash.
+/// Assets are stored in a content-addressable structure based on their SHA-1 hash:
+/// `{game_dir}/assets/objects/{first_two_chars_of_hash}/{full_hash}`.
 ///
 /// # Errors
-///
-/// Returns an error if an asset's SHA-1 hash cannot be extracted.
-///
-/// # Asset Storage Structure
-///
-/// Assets are stored in a content-addressable structure based on their SHA-1 hash:
-/// `{game_dir}/assets/objects/{first_two_chars_of_hash}/{full_hash}`
-///
-/// This allows for deduplication across different game versions.
-///
-/// # Download URL Format
-///
-/// Assets are downloaded from the mirror using the format:
-/// `{mirror}/{first_two_chars_of_hash}/{full_hash}`
+/// - `anyhow::Error` if an asset's SHA-1 hash cannot be extracted
 fn assets_installtask(
     game_dir: &str,
     assets_mirror: &str,
@@ -724,8 +518,6 @@ fn assets_installtask(
         .collect()
 }
 
-/// Tests the assets download task creation.
-///
 /// Verifies that asset install tasks are correctly generated for all
 /// assets in the version's asset index.
 #[test]

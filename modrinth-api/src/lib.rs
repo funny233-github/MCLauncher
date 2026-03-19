@@ -39,66 +39,49 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
-/// Represents file hash information for a version file.
-///
-/// This structure contains the SHA1 and SHA512 hashes of a file,
-/// which are used for file integrity verification.
+/// Hash values for file integrity verification.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Hashes {
-    /// The SHA1 hash of the file
+    /// SHA1 hash.
     pub sha1: String,
-    /// The SHA512 hash of the file
+    /// SHA512 hash.
     pub sha512: String,
 }
 
-/// Represents a file associated with a specific version of a project.
-///
-/// Each version may contain multiple files (e.g., different downloads for
-/// different environments or additional resources).
+/// A downloadable file for a specific version.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct VersionFile {
-    /// The filename of the file
+    /// File name.
     pub filename: String,
-    /// Hash information for file integrity verification
+    /// Hash information for verification.
     pub hashes: Hashes,
-    /// The URL from which the file can be downloaded
+    /// Download URL.
     pub url: String,
 }
 
-/// Represents a specific version of a Minecraft mod or project.
-///
-/// A version contains all the information about a particular release of a mod,
-/// including which game versions and mod loaders it supports, as well as
-/// the actual files that can be downloaded.
+/// A specific version of a Minecraft project.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Version {
-    /// The display name of the version (e.g., "1.0.0")
+    /// Display name (e.g., "1.0.0").
     pub name: String,
-    /// The version number string
+    /// Version number string.
     pub version_number: String,
-    /// List of Minecraft game versions this version supports
+    /// Supported Minecraft game versions.
     pub game_versions: Vec<String>,
-    /// The type of version (e.g., "release", "beta", "alpha")
+    /// Release type (e.g., "release", "beta", "alpha").
     pub version_type: String,
-    /// List of mod loaders this version supports (e.g., "fabric", "forge")
+    /// Supported mod loaders (e.g., "fabric", "forge").
     pub loaders: Vec<String>,
-    /// List of downloadable files for this version
+    /// Downloadable files.
     pub files: Vec<VersionFile>,
 }
 
 impl Version {
     /// Checks if this version supports a specific Minecraft game version.
     ///
-    /// # Arguments
+    /// Returns true if the specified game version is in the supported versions list.
     ///
-    /// * `game_version` - The game version to check (e.g., "1.20.4")
-    ///
-    /// # Returns
-    ///
-    /// `true` if the version supports the specified game version, `false` otherwise.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use modrinth_api::Version;
     /// # let version = Version {
@@ -119,16 +102,9 @@ impl Version {
 
     /// Checks if this version supports a specific mod loader.
     ///
-    /// # Arguments
+    /// Returns true if the specified mod loader is in the supported loaders list.
     ///
-    /// * `game_loader` - The mod loader to check (e.g., "fabric", "forge")
-    ///
-    /// # Returns
-    ///
-    /// `true` if the version supports the specified loader, `false` otherwise.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use modrinth_api::Version;
     /// # let version = Version {
@@ -148,44 +124,26 @@ impl Version {
     }
 }
 
-/// Provides methods to fetch version information from Modrinth.
-///
-/// This struct acts as a namespace for version-related operations,
-/// offering both synchronous and asynchronous methods to retrieve
-/// version data for projects.
+/// Fetches version information from Modrinth.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct Versions {}
 
 impl Versions {
-    /// Fetches the list of versions for a project with the given slug.
+    /// Fetches versions for a project by slug (blocking).
     ///
-    /// This is a synchronous blocking operation that will wait for the HTTP request
-    /// to complete before returning. The method implements an automatic retry mechanism
-    /// with up to 5 attempts.
+    /// Retrieves all available versions for the specified project slug.
+    /// Uses up to 5 retry attempts for failed requests.
     ///
-    /// # Arguments
-    ///
-    /// * `slug` - The project slug (unique identifier) on Modrinth
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a vector of `Version` objects if successful.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The HTTP request fails after 5 retry attempts
-    /// - The response cannot be parsed as JSON
-    /// - The project slug does not exist
-    /// - Network connectivity issues occur
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// use modrinth_api::Versions;
     /// let versions = Versions::fetch_blocking("fabric-api").unwrap();
     /// assert!(versions.len() > 0);
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails after retries, the response
+    /// cannot be parsed, or the project slug does not exist.
     pub fn fetch_blocking(slug: &str) -> Result<Vec<Version>> {
         let client = Client::new();
         let mut err_detail = None;
@@ -216,30 +174,12 @@ impl Versions {
         ))
     }
 
-    /// Fetches the list of versions for a project with the given slug.
+    /// Fetches versions for a project by slug (async).
     ///
-    /// This is an asynchronous non-blocking operation. The method implements an
-    /// automatic retry mechanism with up to 5 attempts. Must be awaited in an
-    /// async context.
+    /// Retrieves all available versions for the specified project slug.
+    /// Uses up to 5 retry attempts for failed requests.
     ///
-    /// # Arguments
-    ///
-    /// * `slug` - The project slug (unique identifier) on Modrinth
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a vector of `Version` objects if successful.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The HTTP request fails after 5 retry attempts
-    /// - The response cannot be parsed as JSON
-    /// - The project slug does not exist
-    /// - Network connectivity issues occur
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// use modrinth_api::Versions;
     ///
@@ -249,6 +189,10 @@ impl Versions {
     ///     assert!(versions.len() > 0);
     /// }
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP request fails after retries, the response
+    /// cannot be parsed, or the project slug does not exist.
     pub async fn fetch(slug: &str) -> Result<Vec<Version>> {
         let client = reqwest::Client::new();
         let mut err_detail = None;
@@ -281,51 +225,43 @@ impl Versions {
     }
 }
 
-/// Represents a single search result hit from Modrinth.
-///
-/// This structure contains metadata about a project that appears in search results,
-/// including its title, description, author, version information, and more.
+/// A search result from Modrinth.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Hit {
-    /// The unique project identifier
+    /// Unique project identifier.
     pub project_id: String,
-    /// The type of project (e.g., "mod", "modpack", "resourcepack")
+    /// Project type (e.g., "mod", "modpack", "resourcepack").
     pub project_type: String,
-    /// The project slug (URL-friendly identifier)
+    /// URL-friendly identifier.
     pub slug: String,
-    /// The username of the project author
+    /// Author username.
     pub author: String,
-    /// The display title of the project
+    /// Display title.
     pub title: String,
-    /// A short description of the project
+    /// Short description.
     pub description: String,
-    /// Categories the project is displayed in
+    /// Display categories.
     pub display_categories: Option<Vec<String>>,
-    /// List of version IDs for this project
+    /// Version IDs.
     pub versions: Vec<String>,
-    /// Number of users following this project
+    /// Follower count.
     pub follows: i32,
-    /// ISO 8601 date string when the project was created
+    /// Creation date (ISO 8601).
     pub date_created: String,
-    /// The ID of the latest version
+    /// Latest version ID.
     pub latest_version: Option<String>,
-    /// The license identifier for the project
+    /// License identifier.
     pub license: String,
-    /// List of gallery image URLs
+    /// Gallery image URLs.
     pub gallery: Option<Vec<String>>,
-    /// URL of the featured gallery image
+    /// Featured gallery image URL.
     pub featured_gallery: Option<String>,
 }
 
 impl Hit {
     /// Checks if this project is a mod.
     ///
-    /// # Returns
-    ///
-    /// `true` if the project type is "mod", `false` otherwise.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use modrinth_api::Hit;
     /// # let mut hit = Hit {
@@ -353,14 +289,9 @@ impl Hit {
         self.project_type == "mod"
     }
 
-    /// Returns the slug (name) of the project.
+    /// Returns the project slug (name).
     ///
-    /// # Returns
-    ///
-    /// A cloned copy of the project's slug string.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use modrinth_api::Hit;
     /// # let hit = Hit {
@@ -386,23 +317,13 @@ impl Hit {
         self.slug.clone()
     }
 
-    /// Checks if this project supports a specific game version.
+    /// Checks if this project supports a specific version ID.
     ///
-    /// Note: This checks against the version IDs stored in the project,
-    /// not the actual version data. For more accurate checking,
-    /// use the `Versions` module to fetch full version information.
+    /// Note: This checks against version IDs stored in the project,
+    /// not game version strings. Use the `Versions` module for
+    /// accurate game version compatibility checking.
     ///
-    /// # Arguments
-    ///
-    /// * `version` - The version ID to check
-    ///
-    /// # Returns
-    ///
-    /// `true` if the version ID exists in the project's versions list,
-    /// `false` otherwise.
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// # use modrinth_api::Hit;
     /// # let hit = Hit {
@@ -430,54 +351,36 @@ impl Hit {
     }
 }
 
-/// Represents a paginated list of search results from Modrinth.
-///
-/// This structure contains the search results along with pagination
-/// information, allowing clients to navigate through large result sets.
+/// Paginated search results from Modrinth.
 #[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Projects {
-    /// The list of matching projects
+    /// Matching projects.
     pub hits: Vec<Hit>,
-    /// The offset of the current page
+    /// Page offset.
     pub offset: i32,
-    /// The maximum number of results per page
+    /// Maximum results per page.
     pub limit: i32,
-    /// The total number of matching results
+    /// Total matching results.
     pub total_hits: i32,
 }
 
 impl Projects {
-    /// Searches for projects matching the given query.
+    /// Searches for projects matching the query (blocking).
     ///
-    /// This is a synchronous blocking operation that searches Modrinth's database
-    /// for projects matching the provided query string. The method implements an
-    /// automatic retry mechanism with up to 5 attempts.
+    /// Searches Modrinth for projects matching the query string.
+    /// Uses up to 5 retry attempts for failed requests.
+    /// The limit parameter must be <= 100 (defaults to 10).
     ///
-    /// # Arguments
-    ///
-    /// * `query` - The search query string (can be a project name, keyword, etc.)
-    /// * `limit` - Optional maximum number of results to return (must be <= 100).
-    ///   If `None`, defaults to 10.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a `Projects` object with the search results.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The `limit` parameter is greater than 100
-    /// - The HTTP request fails after 5 retry attempts
-    /// - The response cannot be parsed as JSON
-    /// - Network connectivity issues occur
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// use modrinth_api::Projects;
     /// let projects = Projects::fetch_blocking("fabric-api", Some(10)).unwrap();
     /// assert!(projects.hits.len() > 0);
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the limit exceeds 100, the HTTP request fails
+    /// after retries, or the response cannot be parsed.
     pub fn fetch_blocking(query: &str, limit: Option<usize>) -> Result<Projects> {
         let client = Client::new();
         let mut err_detail = None;
@@ -516,32 +419,13 @@ impl Projects {
         ))
     }
 
-    /// Searches for projects matching the given query.
+    /// Searches for projects matching the query (async).
     ///
-    /// This is an asynchronous non-blocking operation. The method implements an
-    /// automatic retry mechanism with up to 5 attempts. Must be awaited in an
-    /// async context.
+    /// Searches Modrinth for projects matching the query string.
+    /// Uses up to 5 retry attempts for failed requests.
+    /// The limit parameter must be <= 100 (defaults to 10).
     ///
-    /// # Arguments
-    ///
-    /// * `query` - The search query string (can be a project name, keyword, etc.)
-    /// * `limit` - Optional maximum number of results to return (must be <= 100).
-    ///   If `None`, defaults to 10.
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Result` containing a `Projects` object with the search results.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The `limit` parameter is greater than 100
-    /// - The HTTP request fails after 5 retry attempts
-    /// - The response cannot be parsed as JSON
-    /// - Network connectivity issues occur
-    ///
-    /// # Examples
-    ///
+    /// # Example
     /// ```
     /// use modrinth_api::Projects;
     ///
@@ -551,6 +435,10 @@ impl Projects {
     ///     assert!(projects.hits.len() > 0);
     /// }
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the limit exceeds 100, the HTTP request fails
+    /// after retries, or the response cannot be parsed.
     pub async fn fetch(query: &str, limit: Option<usize>) -> Result<Projects> {
         let client = reqwest::Client::new();
         let mut err_detail = None;
