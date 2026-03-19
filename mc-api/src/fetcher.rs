@@ -1,86 +1,70 @@
-use crate::Sha1Compare;
-use anyhow::Result;
-use reqwest::blocking::Client;
-use std::time::Duration;
-
-/// Fetcher Module
+/// Provides a type-safe, builder-pattern HTTP fetcher with retry logic.
 ///
-/// This module provides a type-safe, builder-pattern based HTTP fetcher
-/// with support for JSON/XML deserialization, SHA1 verification,
-/// and automatic retry logic.
+/// Supports JSON/XML deserialization, SHA1 verification, and configurable timeouts.
 ///
-/// # Features
-///
-/// - **Type-safe API**: Builder pattern with compile-time type checking
-/// - **Multiple formats**: Support for JSON, XML, and plain text
-/// - **SHA1 verification**: Optional integrity checking for critical data
-/// - **Retry logic**: Configurable retry attempts
-/// - **Timeout handling**: Configurable request timeout
-///
-/// # Basic Usage
+/// # Example
 ///
 /// ```no_run
 /// use mc_api::fetcher::FetcherBuilder;
 ///
 /// // Fetch JSON data
-/// let data: String = FetcherBuilder::fetch("http://example.com/data.json")
+/// let data: serde_json::Value = FetcherBuilder::fetch("http://example.com/data.json")
 ///     .json()
 ///     .execute()?
 ///     .json()?;
 ///
-/// // Fetch XML data
-/// let xml_data: String = FetcherBuilder::fetch("http://example.com/data.xml")
-///     .xml()
-///     .execute()?
-///     .xml()?;
-///
-/// // Fetch plain text
-/// let text: String = FetcherBuilder::fetch("http://example.com/text.txt")
-///     .execute::<String>()?
-///     .text()?;
-///
 /// // Fetch with SHA1 verification
-/// let verified_text: String = FetcherBuilder::fetch("http://example.com/asset.json")
+/// let text: String = FetcherBuilder::fetch("http://example.com/asset.json")
 ///     .sha1("abc123...")
 ///     .execute::<String>()?
 ///     .text()?;
-/// # Ok::<(),anyhow::Error>(())
+/// # Ok::<(), anyhow::Error>(())
 /// ```
-///
-/// # Comparison with fetch! Macro
-///
-/// | Feature | fetch! | FetcherBuilder |
-/// |---------|--------|----------------|
-/// | Type safety | ❌ Macro | ✅ Compile-time checking |
-/// | Builder pattern | ❌ No | ✅ Fluent API |
-/// | Configurable | ❌ Hardcoded | ✅ Flexible parameters |
-/// | SHA1 verification | ✅ Optional | ✅ Optional |
-/// | Retry logic | ✅ Fixed 5 times | ✅ Configurable |
+use crate::Sha1Compare;
+use anyhow::Result;
+use reqwest::blocking::Client;
+use std::time::Duration;
+
+/// Deserialization type for HTTP responses.
 #[derive(Default)]
 pub enum DeserializeType {
+    /// Raw bytes, no deserialization.
     #[default]
     Byte,
+    /// JSON deserialization.
     Json,
+    /// XML deserialization.
     Xml,
+    /// Plain text.
     Text,
 }
 
 /// Builder for configuring and executing HTTP requests with retry logic.
 ///
-/// # Fields
+/// # Example
 ///
-/// * `url` - The URL to fetch data from
-/// * `deserialize_type` - How to parse the response (Json, Xml, or None for text)
-/// * `retry` - Number of retry attempts (default: 5)
-/// * `timeout` - Request timeout in seconds (default: 100)
-/// * `wait_time` - Delay between retry attempts in seconds (default: 10)
-/// * `sha1` - Optional SHA1 hash for response verification
+/// ```
+/// use mc_api::fetcher::FetcherBuilder;
+/// use std::time::Duration;
+///
+/// let builder = FetcherBuilder::fetch("http://example.com/data.json")
+///     .json()
+///     .retry(3)
+///     .timeout(30)
+///     .sha1("abc123...");
+/// ```
 pub struct FetcherBuilder {
+    /// The URL to fetch data from.
     pub url: String,
+    /// How to parse the response.
     pub deserialize_type: DeserializeType,
+    /// Number of retry attempts on failure.
     pub retry: u64,
+    /// Request timeout duration.
     pub timeout: Duration,
+    /// Delay between retry attempts.
     pub wait_time: Duration,
+    /// Optional SHA1 hash for response verification.
     pub sha1: Option<String>,
 }
 
@@ -88,48 +72,39 @@ pub struct FetcherBuilder {
 ///
 /// Contains deserialized data in the requested format.
 ///
-/// # Type Parameters
-///
-/// * `T` - The deserialized type for Json/Xml variants, or unused for Text
-///
-/// # Variants
-///
-/// * `Text(String)` - Raw text response when `DeserializeType::None` is used
-/// * `Json(T)` - JSON deserialized into type `T`
-/// * `Xml(T)` - XML deserialized into type `T`
-///
 /// # Example
 ///
-/// ```no_run
+/// ```
 /// use mc_api::fetcher::FetcherBuilder;
 ///
-/// // Get raw text
 /// let text: String = FetcherBuilder::fetch("http://example.com/data.txt")
+///     .text()
 ///     .execute::<String>()?
 ///     .text()?;
-///
-/// // Get JSON data
-/// let data: String = FetcherBuilder::fetch("http://example.com/data.json")
-///     .json()
-///     .execute()?
-///     .json()?;
-/// # Ok::<(),anyhow::Error>(())
+/// # Ok::<(), anyhow::Error>(())
 /// ```
 pub enum FetcherResult<T: serde::de::DeserializeOwned> {
+    /// Raw text response.
     Text(String),
+    /// Raw byte response.
     Byte(Vec<u8>),
+    /// JSON deserialized into type `T`.
     Json(T),
+    /// XML deserialized into type `T`.
     Xml(T),
 }
 
 impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
+    /// Extracts the raw bytes from the result.
+    ///
     /// # Errors
-    /// TODO complete docs
+    ///
+    /// Returns an error if the result is not in the `Byte` variant.
     pub fn byte(self) -> Result<Vec<u8>> {
         if let FetcherResult::Byte(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("TODO complete error"))?
+            Err(anyhow::anyhow!("Expected Byte variant, found non-Byte result"))?
         }
     }
     /// Extracts the raw text from the result.
@@ -141,7 +116,7 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Text(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("TODO complete error"))?
+            Err(anyhow::anyhow!("Expected Text variant, found non-Text result"))?
         }
     }
 
@@ -154,7 +129,7 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Json(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("TODO complete error"))?
+            Err(anyhow::anyhow!("Expected Json variant, found non-Json result"))?
         }
     }
 
@@ -167,7 +142,7 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Xml(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("TODO complete error"))?
+            Err(anyhow::anyhow!("Expected Xml variant, found non-Xml result"))?
         }
     }
 }
@@ -186,6 +161,7 @@ impl Default for FetcherBuilder {
 }
 
 impl FetcherBuilder {
+    /// Creates a new `FetcherBuilder` with the specified URL.
     #[must_use]
     pub fn fetch(url: &str) -> FetcherBuilder {
         Self {
@@ -194,6 +170,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the deserialization type to JSON.
     #[must_use]
     pub fn json(self) -> FetcherBuilder {
         Self {
@@ -202,6 +179,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the deserialization type to XML.
     #[must_use]
     pub fn xml(self) -> FetcherBuilder {
         Self {
@@ -210,6 +188,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the deserialization type to plain text.
     #[must_use]
     pub fn text(self) -> FetcherBuilder {
         Self {
@@ -218,6 +197,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the deserialization type to raw bytes.
     #[must_use]
     pub fn byte(self) -> FetcherBuilder {
         Self {
@@ -226,11 +206,13 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the number of retry attempts on failure.
     #[must_use]
     pub fn retry(self, num: u64) -> FetcherBuilder {
         Self { retry: num, ..self }
     }
 
+    /// Sets the request timeout in seconds.
     #[must_use]
     pub fn timeout(self, secs: u64) -> FetcherBuilder {
         Self {
@@ -239,6 +221,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the delay between retry attempts in seconds.
     #[must_use]
     pub fn wait_time(self, secs: u64) -> FetcherBuilder {
         Self {
@@ -247,6 +230,7 @@ impl FetcherBuilder {
         }
     }
 
+    /// Sets the SHA1 hash for response verification.
     #[must_use]
     pub fn sha1(self, sha1code: &str) -> FetcherBuilder {
         Self {
@@ -255,15 +239,30 @@ impl FetcherBuilder {
         }
     }
 
+    /// Executes the HTTP request and returns the deserialized result.
+    ///
+    /// Retries the request up to the configured number of times on failure,
+    /// with a configurable delay between attempts.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mc_api::fetcher::FetcherBuilder;
+    ///
+    /// let result = FetcherBuilder::fetch("http://example.com/data.json")
+    ///     .json()
+    ///     .execute()?;
+    /// let data: serde_json::Value = result.json()?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns an error if:
-    /// - Network request fails (connection refused, DNS resolution failure, etc.)
-    /// - Request times out after configured duration
-    /// - Server returns non-success status code
-    /// - JSON/XML response is malformed and cannot be parsed
-    /// - Response does not match expected data structure
-    /// - XML parsing fails (when using `xml()`)
+    /// - All retry attempts fail (connection error, timeout, etc.)
+    /// - Server returns a non-success status code
+    /// - Response cannot be deserialized (malformed JSON/XML, invalid structure)
+    /// - SHA1 verification fails (if configured)
     pub fn execute<T: serde::de::DeserializeOwned>(self) -> Result<FetcherResult<T>> {
         let client = Client::new();
         for _ in 0..self.retry {
@@ -302,7 +301,7 @@ impl FetcherBuilder {
                         return Ok(FetcherResult::Xml(quick_xml::de::from_str(&data)?))
                     }
                     DeserializeType::Byte => {
-                        return Err(anyhow::anyhow!("TODO complete error message"))
+                        return Err(anyhow::anyhow!("Internal error: Byte deserialization should have been handled earlier in the code"))
                     }
                 }
             }

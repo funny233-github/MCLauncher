@@ -1,7 +1,7 @@
 //! Minecraft API library for version management and metadata fetching.
 //!
 //! This library provides interfaces for interacting with the official Mojang API and
-//! mod loader APIs (Fabric, NeoForge). It supports version management, metadata fetching,
+//! mod loader APIs (Fabric, `NeoForge`). It supports version management, metadata fetching,
 //! mirror server integration, and SHA1 verification.
 //!
 //! # Example
