@@ -82,57 +82,22 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 
 /// Represents a supported Minecraft game version for Fabric.
-///
-/// Contains information about Minecraft versions that are supported by the
-/// Fabric mod loader, including stability status.
-///
-/// # Fields
-///
-/// * `version` - The Minecraft version string (e.g., "1.20.6")
-/// * `stable` - Whether this version is considered stable
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Game;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let games = Game::fetch(mirror)?;
-///
-/// // Find the latest stable version
-/// let latest_stable = games.iter().filter(|g| g.stable).last().unwrap();
-/// println!("Latest stable version: {}", latest_stable.version);
-/// # Ok::<(), anyhow::Error>(())
-/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Game {
+    /// Version string (e.g., "1.20.6").
     pub version: String,
+    /// Whether this version is considered stable.
     pub stable: bool,
 }
 
 impl Game {
     /// Fetches all supported game versions for Fabric.
     ///
-    /// Retrieves a list of all Minecraft versions that are supported by the
-    /// Fabric mod loader from the specified mirror.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `Game` structs representing supported versions.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
+    /// Returns a vector of all Minecraft versions that the Fabric mod loader supports.
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror (e.g., the official
+    /// meta.fabricmc.net or BMCLAPI's mirror).
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Game;
     ///
@@ -145,6 +110,10 @@ impl Game {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// or the server returns a non-success status code.
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/game";
         FetcherBuilder::fetch(&url).json().execute()?.json()
@@ -152,69 +121,31 @@ impl Game {
 }
 
 /// Represents a Yarn mapping version for Fabric.
-///
-/// Contains information about Yarn mappings used for deobfuscating Minecraft
-/// code, including the game version, separator, build number, and stability.
-///
-/// # Fields
-///
-/// * `game_version` - The Minecraft version this mapping targets
-/// * `separator` - The separator used in mapping names
-/// * `build` - The build number of this mapping
-/// * `maven` - The Maven coordinates for downloading this mapping
-/// * `version` - The version string of this mapping
-/// * `stable` - Whether this version is considered stable
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Yarn;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let yarns = Yarn::fetch(mirror)?;
-///
-/// // Find Yarn mappings for a specific version
-/// let mc_1_20_yarn = yarns.iter()
-///     .filter(|y| y.game_version == "1.20" && y.stable)
-///     .next()
-///     .unwrap();
-/// println!("Yarn for 1.20: {}", mc_1_20_yarn.version);
-/// # Ok::<(), anyhow::Error>(())
-/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Yarn {
+    /// Minecraft version this mapping targets.
     #[serde(rename = "gameVersion")]
     pub game_version: String,
+    /// Separator used in mapping names.
     pub separator: String,
+    /// Build number of this mapping.
     pub build: i32,
+    /// Maven coordinates for downloading.
     pub maven: String,
+    /// Version string of this mapping.
     pub version: String,
+    /// Whether this version is considered stable.
     pub stable: bool,
 }
 
 impl Yarn {
     /// Fetches all Yarn mapping versions.
     ///
-    /// Retrieves a list of all Yarn mapping versions available from the
-    /// specified mirror. Stability is based on the Minecraft version.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `Yarn` structs representing available mappings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
+    /// Returns a vector of all Yarn mapping versions available from the specified mirror.
+    /// Stability is determined by the associated Minecraft version's stability.
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Yarn;
     ///
@@ -228,6 +159,10 @@ impl Yarn {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// or the server returns a non-success status code.
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/yarn";
         FetcherBuilder::fetch(&url).json().execute()?.json()
@@ -235,63 +170,27 @@ impl Yarn {
 }
 
 /// Represents a Fabric loader version.
-///
-/// Contains information about Fabric loader versions, including the separator,
-/// build number, Maven coordinates, and stability.
-///
-/// # Fields
-///
-/// * `separator` - The separator used in version strings
-/// * `build` - The build number of this loader
-/// * `maven` - The Maven coordinates for downloading this loader
-/// * `version` - The version string of this loader
-/// * `stable` - Whether this version is considered stable
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Loader;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let loaders = Loader::fetch(mirror)?;
-///
-/// // Find the latest stable loader
-/// let latest_stable = loaders.iter().filter(|l| l.stable).last().unwrap();
-/// println!("Latest stable loader: {} (build {})", latest_stable.version, latest_stable.build);
-/// # Ok::<(), anyhow::Error>(())
-/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Loader {
+    /// Separator used in version strings.
     pub separator: String,
+    /// Build number of this loader.
     pub build: i32,
+    /// Maven coordinates for downloading.
     pub maven: String,
+    /// Version string of this loader.
     pub version: String,
+    /// Whether this version is considered stable.
     pub stable: bool,
 }
 
 impl Loader {
     /// Fetches all Fabric loader versions.
     ///
-    /// Retrieves a list of all Fabric loader versions available from the
-    /// specified mirror.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `Loader` structs representing available versions.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
+    /// Returns a vector of all Fabric loader versions available from the specified mirror.
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Loader;
     ///
@@ -305,6 +204,10 @@ impl Loader {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// or the server returns a non-success status code.
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/loader";
         FetcherBuilder::fetch(&url).json().execute()?.json()
@@ -312,60 +215,24 @@ impl Loader {
 }
 
 /// Represents an intermediary mapping version for Fabric.
-///
-/// Contains information about intermediary mapping versions, which are used
-/// for deobfuscation between obfuscated and deobfuscated code. Stability is based
-/// on the Minecraft version.
-///
-/// # Fields
-///
-/// * `maven` - The Maven coordinates for downloading this intermediary
-/// * `version` - The version string of this intermediary
-/// * `stable` - Whether this version is considered stable
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Intermediary;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let intermediaries = Intermediary::fetch(mirror)?;
-///
-/// // Find the latest stable intermediary
-/// let latest_stable = intermediaries.iter().filter(|i| i.stable).last().unwrap();
-/// println!("Latest stable intermediary: {}", latest_stable.version);
-/// # Ok::<(), anyhow::Error>(())
-/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Intermediary {
+    /// Maven coordinates for downloading.
     pub maven: String,
+    /// Version string of this intermediary.
     pub version: String,
+    /// Whether this version is considered stable.
     pub stable: bool,
 }
 
 impl Intermediary {
     /// Fetches all intermediary mapping versions.
     ///
-    /// Retrieves a list of all intermediary mapping versions available from
-    /// the specified mirror. Stability is based on the Minecraft version.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `Intermediary` structs representing available versions.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
+    /// Returns a vector of all intermediary mapping versions available from the specified mirror.
+    /// Stability is determined by the associated Minecraft version's stability.
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Intermediary;
     ///
@@ -379,6 +246,10 @@ impl Intermediary {
     /// }
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// or the server returns a non-success status code.
     pub fn fetch(mirror: &str) -> anyhow::Result<Vec<Self>> {
         let url = mirror.to_owned() + "v2/versions/intermediary";
         FetcherBuilder::fetch(&url).json().execute()?.json()
@@ -386,88 +257,41 @@ impl Intermediary {
 }
 
 /// Represents a Fabric installer version.
-///
-/// Contains information about Fabric installer versions, including the download URL,
-/// Maven coordinates, and stability.
-///
-/// # Fields
-///
-/// * `url` - The URL to download this installer
-/// * `maven` - The Maven coordinates for this installer
-/// * `version` - The version string of this installer
-/// * `stable` - Whether this version is considered stable
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Installer {
+    /// URL to download this installer.
     pub url: String,
+    /// Maven coordinates.
     pub maven: String,
+    /// Version string of this installer.
     pub version: String,
+    /// Whether this version is considered stable.
     pub stable: bool,
 }
 
 /// Complete Fabric metadata database.
-///
-/// Contains all available version information for Fabric, including game versions,
-/// mappings, intermediaries, loaders, and installers.
-///
-/// # Fields
-///
-/// * `game` - All supported Minecraft game versions
-/// * `mappings` - All Yarn mapping versions
-/// * `intermediary` - All intermediary mapping versions
-/// * `loader` - All Fabric loader versions
-/// * `installer` - All Fabric installer versions
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Versions;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let versions = Versions::fetch(mirror)?;
-///
-/// println!("Supported game versions: {}", versions.game.len());
-/// println!("Available loaders: {}", versions.loader.len());
-/// println!("Latest stable loader: {}", versions.loader.iter()
-///     .filter(|l| l.stable).last().map(|l| &l.version).unwrap());
-/// # Ok::<(), anyhow::Error>(())
-/// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Versions {
-    /// Lists all of the supported game versions.
+    /// All supported Minecraft game versions.
     pub game: Vec<Game>,
-    /// Lists all of the compatible game versions for yarn.
+    /// All Yarn mapping versions.
     pub mappings: Vec<Yarn>,
-    /// Lists all of the intermediary versions, stable is based of the Minecraft version.
+    /// All intermediary mapping versions.
     pub intermediary: Vec<Intermediary>,
-    /// Lists all of the loader versions.
+    /// All Fabric loader versions.
     pub loader: Vec<Loader>,
-    /// Lists all of the installer.
+    /// All Fabric installer versions.
     pub installer: Vec<Installer>,
 }
 
 impl Versions {
     /// Fetches the complete Fabric metadata database.
     ///
-    /// Retrieves all available version information from the specified mirror,
+    /// Returns all available version information from the specified mirror,
     /// including game versions, mappings, intermediaries, loaders, and installers.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Versions` struct containing all metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Versions;
     ///
@@ -483,45 +307,26 @@ impl Versions {
     /// println!("Stable loader for {}: {}", mc_version, stable_loader.version);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// or the server returns a non-success status code.
     pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
         let url = mirror.to_owned() + "v2/versions";
         FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 }
 
-/// Represents game and JVM arguments for Fabric.
-///
-/// Contains the argument lists that should be passed to the game and JVM
-/// when launching Minecraft with Fabric.
-///
-/// # Fields
-///
-/// * `game` - Arguments to pass to the Minecraft game process
-/// * `jvm` - Arguments to pass to the Java virtual machine
+/// Game and JVM arguments for Fabric.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Arguments {
+    /// Arguments to pass to the Minecraft game process.
     pub game: Vec<serde_json::Value>,
+    /// Arguments to pass to the Java virtual machine.
     pub jvm: Vec<serde_json::Value>,
 }
 
-/// Represents a library dependency from a Fabric profile.
-///
-/// Contains information about a library required by Fabric, including its name,
-/// download URL, and various hash values for integrity verification.
-///
-/// # Fields
-///
-/// * `name` - The Maven coordinate name of the library (private)
-/// * `url` - The base URL for downloading the library
-/// * `md5` - Optional MD5 hash for verification
-/// * `sha1` - Optional SHA1 hash for verification
-/// * `sha256` - Optional SHA256 hash for verification
-/// * `sha512` - Optional SHA512 hash for verification
-/// * `size` - Optional file size in bytes
-///
-/// # Conversion
-///
-/// This struct can be converted to `official::Library` using the `From` trait.
+/// Library dependency from a Fabric profile.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {
     name: String,
@@ -556,26 +361,8 @@ impl From<Library> for official::Library {
 
 /// Converts a Maven coordinate name to a file path.
 ///
-/// This helper function transforms a Maven coordinate string (e.g., `group:artifact:version`)
-/// into the corresponding file path used in Minecraft's library directory structure.
-///
-/// # Parameters
-///
-/// * `name` - The Maven coordinate name (format: `groupId:artifactId:version`)
-///
-/// # Returns
-///
-/// Returns the file path in the format: `groupId/path/artifactId/version/artifactId-version.jar`
-///
-/// # Format Details
-///
-/// The transformation follows these rules:
-/// 1. Split the name by `:` into components
-/// 2. The last component is the version
-/// 3. The second-to-last component is the artifact ID
-/// 4. All preceding components form the group ID
-/// 5. Replace `.` with `/` in the group ID
-/// 6. Construct the path: `groupId/artifactId/version/artifactId-version.jar`
+/// Transforms a Maven coordinate string (e.g., `group:artifact:version`) into the
+/// corresponding file path used in Minecraft's library directory structure.
 fn to_path(name: &str) -> String {
     let mut name: VecDeque<&str> = name.split(':').collect();
     let version = &name.pop_back().unwrap();
@@ -596,97 +383,38 @@ fn test_name_to_path() {
     assert_eq!(to_path(&name), ans);
 }
 
-/// Represents a Fabric loader profile JSON for the standard Minecraft launcher.
-///
-/// This structure contains all the information needed to launch Minecraft with
-/// the Fabric mod loader, including game arguments, JVM arguments, and library dependencies.
-/// It's designed to be compatible with the standard Minecraft launcher format.
-///
-/// # Fields
-///
-/// * `id` - The profile ID (e.g., "fabric-loader-0.15.10-1.20.6")
-/// * `inherits_from` - The Minecraft version this profile inherits from
-/// * `release_time` - When this profile was released
-/// * `time` - When this profile was last updated
-/// * `r#type` - The type of profile (typically "release" or "snapshot")
-/// * `main_class` - The main class to launch
-/// * `arguments` - Game and JVM arguments
-/// * `libraries` - Required library dependencies
-///
-/// # Version String Encoding
-///
-/// Some characters in version strings are URL-encoded:
-/// - Space (` `) becomes `%20`
-/// - For example: `1.14 Pre-Release 5` becomes `1.14%20Pre-Release%205`
-///
-/// # Example
-///
-/// ```no_run
-/// use mc_api::fabric::Profile;
-///
-/// let mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
-/// let game_version = "1.20.6";
-/// let loader_version = "0.15.10";
-///
-/// let profile = Profile::fetch(mirror, game_version, loader_version)?;
-///
-/// println!("Profile ID: {}", profile.id);
-/// println!("Main class: {}", profile.main_class);
-/// println!("Libraries: {}", profile.libraries.len());
-/// println!("JVM arguments: {}", profile.arguments.jvm.len());
-/// # Ok::<(), anyhow::Error>(())
-/// ```
-///
-/// # Integration with Official Versions
-///
-/// Fabric profiles implement the `official::MergeVersion` trait, allowing them to be
-/// merged with official Minecraft versions for complete modded game installations.
+/// Fabric loader profile JSON for the standard Minecraft launcher.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Profile {
+    /// Profile ID (e.g., "fabric-loader-0.15.10-1.20.6").
     pub id: String,
+    /// Minecraft version this profile inherits from.
     #[serde(rename = "inheritsFrom")]
     pub inherits_from: String,
+    /// Release timestamp.
     #[serde(rename = "releaseTime")]
     pub release_time: String,
+    /// Last update timestamp.
     pub time: String,
+    /// Profile type (typically "release" or "snapshot").
     pub r#type: String,
+    /// Main class to launch.
     #[serde(rename = "mainClass")]
     pub main_class: String,
+    /// Game and JVM arguments.
     pub arguments: Arguments,
+    /// Required library dependencies.
     pub libraries: Vec<Library>,
 }
 
 impl Profile {
     /// Fetches a Fabric loader profile for a specific game and loader version.
     ///
-    /// This method retrieves the JSON profile that should be used in the standard
-    /// Minecraft launcher for launching with Fabric.
-    ///
-    /// # Parameters
-    ///
-    /// * `mirror` - The base URL of the Fabric Meta API mirror
-    /// * `game_version` - The Minecraft version (e.g., "1.20.6", "1.14 Pre-Release 5")
-    /// * `loader_version` - The Fabric loader version (e.g., "0.15.10", "0.14.24")
-    ///
-    /// # URL Encoding
-    ///
-    /// Spaces in version strings are URL-encoded as `%20`:
-    /// - `"1.14 Pre-Release 5"` becomes `"1.14%20Pre-Release%205"`
-    ///
-    /// # Returns
-    ///
-    /// Returns a `Profile` struct containing all the profile information.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
-    /// - Invalid game or loader version specified
+    /// Returns the JSON profile that should be used in the standard Minecraft launcher
+    /// for launching with Fabric. Spaces in version strings are URL-encoded as `%20`.
+    /// The mirror URL should be the base URL of a Fabric Meta API mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::fabric::Profile;
     ///
@@ -703,12 +431,9 @@ impl Profile {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     ///
-    /// # Common Loader Versions
-    ///
-    /// Common Fabric loader versions include:
-    /// - `0.15.10` - Latest stable (as of writing)
-    /// - `0.14.24` - Previous stable series
-    /// - `0.15.11` - Development versions
+    /// # Errors
+    /// Returns an error if the network request fails, the response cannot be parsed as JSON,
+    /// the server returns a non-success status code, or an invalid game or loader version is specified.
     pub fn fetch(mirror: &str, game_version: &str, loader_version: &str) -> anyhow::Result<Self> {
         let url = mirror.to_owned()
             + "v2/versions/loader/"
@@ -721,51 +446,19 @@ impl Profile {
 }
 
 /// Implementation of `official::MergeVersion` for `Profile`.
-///
-/// This allows Fabric profiles to be merged with official Minecraft versions,
-/// creating complete modded game installations.
 impl official::MergeVersion for Profile {
-    /// Returns the Fabric-specific libraries in a format compatible with official versions.
-    ///
-    /// This method converts Fabric's `Library` structs to `official::Library` structs,
-    /// enabling them to be used alongside official Minecraft libraries.
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of `official::Library` structs representing Fabric's dependencies.
     fn official_libraries(&self) -> Option<Vec<official::Library>> {
         Some(self.libraries.iter().map(|x| x.clone().into()).collect())
     }
 
-    /// Returns the main class for Fabric.
-    ///
-    /// Fabric uses a custom main class to handle mod loading.
-    ///
-    /// # Returns
-    ///
-    /// Returns the Fabric main class name.
     fn main_class(&self) -> Option<String> {
         Some(self.main_class.clone())
     }
 
-    /// Returns game arguments (always `None` for Fabric).
-    ///
-    /// Fabric handles game arguments internally and doesn't need to merge them.
-    ///
-    /// # Returns
-    ///
-    /// Always returns `None`.
     fn arguments_game(&self) -> Option<Vec<serde_json::Value>> {
         None
     }
 
-    /// Returns JVM arguments for Fabric.
-    ///
-    /// Fabric provides custom JVM arguments for mod loading.
-    ///
-    /// # Returns
-    ///
-    /// Returns a vector of JVM argument values.
     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
         Some(self.arguments.jvm.clone())
     }
