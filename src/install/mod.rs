@@ -165,11 +165,7 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
 
-    if !manifest
-        .versions
-        .iter()
-        .any(|x| x.id == config.game_version)
-    {
+    if !manifest.versions.iter().any(|x| x.id == config.vanilla) {
         return Err(anyhow::anyhow!(
             "Cant' find the minecraft version {}",
             &config.game_version
@@ -177,11 +173,7 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
     }
 
     println!("fetching version...");
-    let mut version = Version::fetch(
-        &manifest,
-        &config.game_version,
-        &config.mirror.version_manifest,
-    )?;
+    let mut version = Version::fetch(&manifest, &config.vanilla, &config.mirror.version_manifest)?;
     if let MCLoader::Fabric(v) = &config.loader {
         println!("fetching fabric loaders version...");
         let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
@@ -189,7 +181,7 @@ fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
             return Err(anyhow::anyhow!("Cant' find the loader version {v}"));
         }
         println!("fetching fabric profile...");
-        let profile = Profile::fetch(&config.mirror.fabric_meta, &config.game_version, v)?;
+        let profile = Profile::fetch(&config.mirror.fabric_meta, &config.vanilla, v)?;
         version.merge(&profile);
     }
     Ok(version)

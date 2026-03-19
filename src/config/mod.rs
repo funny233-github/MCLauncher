@@ -114,6 +114,8 @@ pub enum MCLoader {
     None,
     /// Fabric mod loader with specified version.
     Fabric(String),
+    /// Neoforge mod loader with specified version.
+    Neoforge(String),
 }
 
 /// Configuration for a mod in the runtime config.
@@ -175,10 +177,12 @@ pub struct RuntimeConfig {
     pub window_height: u32,
     /// Path to the game directory.
     pub game_dir: String,
-    /// Minecraft version string.
+    /// Minecraft versions directory string.
     pub game_version: String,
     /// Path to Java executable.
     pub java_path: String,
+    /// Minecraft vanilla version string,
+    pub vanilla: String,
     /// Mod loader type and version.
     pub loader: MCLoader,
     /// Mirror URLs for downloads.
@@ -250,6 +254,7 @@ impl Default for RuntimeConfig {
             game_dir: "./".into(),
             game_version: "no_game_version".into(),
             java_path: "java".into(),
+            vanilla: "no game vanilla version".into(),
             loader: MCLoader::None,
             mirror: MCMirror::official_mirror(),
             mods: None,

@@ -27,13 +27,11 @@ use walkdir::WalkDir;
 /// Verifies that a mod version supports both the configured game version and
 /// the configured mod loader. Returns true if compatible, false otherwise.
 fn is_version_supported(version: &Version, config: &RuntimeConfig) -> bool {
-    version
-        .game_versions
-        .iter()
-        .any(|x| x == &config.game_version)
+    version.game_versions.iter().any(|x| x == &config.vanilla)
         && version.loaders.iter().any(|x| match config.loader {
             MCLoader::None => false,
             MCLoader::Fabric(_) => x == "fabric",
+            MCLoader::Neoforge(_) => x == "neoforge",
         })
 }
 
@@ -395,12 +393,12 @@ struct SyncUpdateHandle {
 
 impl SyncUpdateHandle {
     /// Checks if the mod is already at the correct version in config.lock.
-///
-/// Used to avoid unnecessary re-downloads during sync operations.
-/// Returns true if already synced to the correct version, false otherwise.
+    ///
+    /// Used to avoid unnecessary re-downloads during sync operations.
+    /// Returns true if already synced to the correct version, false otherwise.
     fn is_mod_synced(&self) -> bool {
         let handle = self.handle_share.read().unwrap();
-        let mc_version: &str = handle.config().game_version.as_ref();
+        let mc_version: &str = handle.config().vanilla.as_ref();
         let locked_config_mods = handle.locked_config().mods.as_ref();
 
         if let Some(mods) = locked_config_mods {
@@ -416,15 +414,15 @@ impl SyncUpdateHandle {
     }
 
     /// Fetches mod information and updates the configuration.
-///
-/// Async function that fetches the appropriate version of the mod (either the
-/// specified version for sync or latest for update) and adds it to the locked
-/// configuration.
-///
-/// # Errors
-/// - `anyhow::Error` if network request to Modrinth fails
-/// - `anyhow::Error` if no compatible versions are found
-/// - `anyhow::Error` if configuration cannot be updated
+    ///
+    /// Async function that fetches the appropriate version of the mod (either the
+    /// specified version for sync or latest for update) and adds it to the locked
+    /// configuration.
+    ///
+    /// # Errors
+    /// - `anyhow::Error` if network request to Modrinth fails
+    /// - `anyhow::Error` if no compatible versions are found
+    /// - `anyhow::Error` if configuration cannot be updated
     async fn fetch_mod_to_config(&self) -> Result<()> {
         if let Some(ver) = self.conf.version.clone() {
             let version = {
@@ -443,9 +441,9 @@ impl SyncUpdateHandle {
     }
 
     /// Updates the progress bar for this mod.
-///
-/// Increments the progress counter and sets an appropriate message indicating
-/// whether the mod was synced or updated.
+    ///
+    /// Increments the progress counter and sets an appropriate message indicating
+    /// whether the mod was synced or updated.
     fn update_bar(&self) {
         self.bar_share.inc(1);
         if self.sync {
@@ -458,17 +456,17 @@ impl SyncUpdateHandle {
     }
 
     /// Executes the sync/update operation for a single mod.
-///
-/// Main entry point for processing a mod during bulk sync/update operations.
-/// Checks if the mod is already synced, fetches the appropriate version if needed,
-/// and updates the progress bar. Skips mods that are already at the correct version
-/// (sync mode only), fetches specified version for sync mode, latest for update mode,
-/// and handles local mod files if specified in configuration.
-///
-/// # Errors
-/// - `anyhow::Error` if network request to Modrinth fails
-/// - `anyhow::Error` if no compatible versions are found
-/// - `anyhow::Error` if configuration cannot be updated
+    ///
+    /// Main entry point for processing a mod during bulk sync/update operations.
+    /// Checks if the mod is already synced, fetches the appropriate version if needed,
+    /// and updates the progress bar. Skips mods that are already at the correct version
+    /// (sync mode only), fetches specified version for sync mode, latest for update mode,
+    /// and handles local mod files if specified in configuration.
+    ///
+    /// # Errors
+    /// - `anyhow::Error` if network request to Modrinth fails
+    /// - `anyhow::Error` if no compatible versions are found
+    /// - `anyhow::Error` if configuration cannot be updated
     async fn execute(self) -> Result<()> {
         if self.sync && self.is_mod_synced() {
             self.update_bar();
@@ -667,11 +665,12 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
     let loader = match handle.config().loader {
+        MCLoader::Neoforge(_) => "neforge",
         MCLoader::Fabric(_) => "fabric",
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
 
-    let game_version = handle.config().game_version.as_ref();
+    let game_version = handle.config().vanilla.as_ref();
 
     let projects = Projects::fetch_blocking(name, limit)?;
 

@@ -35,6 +35,10 @@ enum Command {
         /// Install fabric loader
         #[arg(long)]
         fabric: Option<String>,
+
+        /// Install neoforge loader
+        #[arg(long)]
+        neoforge: Option<String>,
     },
 
     /// Run the game
@@ -138,6 +142,10 @@ fn print_version_list(name: &str, versions: &[String], limit: usize) {
     );
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "Current implementation is easy to edit, need too many lines"
+)]
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.command {
@@ -189,7 +197,11 @@ fn handle_args() -> anyhow::Result<()> {
                 Account::Microsoft => handle.add_microsoft_account()?,
             }
         }
-        Command::Install { version, fabric } => {
+        Command::Install {
+            version,
+            fabric,
+            neoforge,
+        } => {
             let mut handle = ConfigHandler::read()?;
             if version.is_none() && fabric.is_none() {
                 install_mc(handle.config())?;
@@ -198,11 +210,18 @@ fn handle_args() -> anyhow::Result<()> {
 
             if let Some(version) = version {
                 println!("Set version to {}", &version);
+                version.clone_into(&mut handle.config_mut().vanilla);
                 handle.config_mut().game_version = version;
             }
+            let game_version = handle.config().game_version.clone();
             if let Some(fabric) = fabric {
                 println!("Set loader to {}", &fabric);
-                handle.config_mut().loader = MCLoader::Fabric(fabric);
+                handle.config_mut().loader = MCLoader::Fabric(fabric.clone());
+
+                handle.config_mut().game_version = format!("{game_version}-fabric-{fabric}");
+            } else if let Some(neoforge) = neoforge {
+                handle.config_mut().loader = MCLoader::Neoforge(neoforge.clone());
+                handle.config_mut().game_version = format!("{game_version}-neoforge-{neoforge}");
             } else {
                 handle.config_mut().loader = MCLoader::None;
             }
