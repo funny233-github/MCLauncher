@@ -45,8 +45,8 @@ fn replace_arguments(args: &[String], valuemap: &HashMap<&str, String>) -> Vec<S
 /// Replaces JVM-specific variable placeholders in arguments.
 ///
 /// Prepares a value map containing JVM-specific variables and applies variable
-/// substitution to JVM arguments from the version manifest. Supports ${natives_directory},
-/// ${launcher_name}, ${launcher_version}, and ${classpath} variables. Returns a new
+/// substitution to JVM arguments from the version manifest. Supports ${`natives_directory`},
+/// ${`launcher_name`}, ${`launcher_version`}, and ${classpath} variables. Returns a new
 /// vector of strings with JVM variables replaced.
 ///
 /// # Errors
@@ -73,9 +73,9 @@ fn replace_arguments_from_jvm(
 ///
 /// Prepares a value map containing game-specific variables including user authentication data,
 /// game paths, and version information, then applies variable substitution to game arguments from
-/// the version manifest. Supports ${auth_player_name}, ${version_name}, ${game_directory},
-/// ${assets_root}, ${assets_index_name}, ${auth_uuid}, ${user_type}, ${version_type}, and
-/// ${auth_access_token} variables. Returns a new vector of strings with game variables replaced.
+/// the version manifest. Supports ${`auth_player_name`}, ${`version_name`}, ${`game_directory`},
+/// ${`assets_root`}, ${`assets_index_name`}, ${`auth_uuid`}, ${`user_type`}, ${`version_type`}, and
+/// ${`auth_access_token`} variables. Returns a new vector of strings with game variables replaced.
 ///
 /// # Errors
 /// - `anyhow::Error` if the version API cannot be read.
@@ -115,7 +115,7 @@ impl ConfigHandler {
     ///
     /// Combines base JVM settings (memory settings, GC, security flags), version-specific JVM
     /// arguments from manifest, the main class specification, and version-specific game arguments
-    /// with authentication data. Base JVM arguments include -Xmx{max_memory_size}m for maximum
+    /// with authentication data. Base JVM arguments include -Xmx{`max_memory_size`}m for maximum
     /// heap, -Xmn256m for minimum heap, -XX:+UseG1GC for G1 garbage collector, and several
     /// compatibility flags for Forge and Log4j security. Returns a vector of strings representing
     /// the complete command line for launching Minecraft.
@@ -164,9 +164,9 @@ impl ConfigHandler {
 
     /// Extracts string arguments from a mixed JSON value array.
     ///
-/// Filters out only the string arguments from version manifest arrays that can contain
-/// either strings or complex objects with conditions. Complex argument objects with
-/// conditions are ignored. Returns a vector containing only the string arguments.
+    /// Filters out only the string arguments from version manifest arrays that can contain
+    /// either strings or complex objects with conditions. Complex argument objects with
+    /// conditions are ignored. Returns a vector containing only the string arguments.
     fn get_normal_args_from(js: &mut [serde_json::Value]) -> Vec<String> {
         js.iter()
             .filter(|x| x.is_string())
