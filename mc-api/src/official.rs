@@ -668,7 +668,11 @@ impl Assets {
     pub fn fetch(asset_index: &AssetIndex, mirror: &str) -> anyhow::Result<Self> {
         let url = asset_index.url.replace_domain(mirror);
         let sha1 = &asset_index.sha1;
-        FetcherBuilder::fetch(&url).sha1(sha1).execute()?.json()
+        FetcherBuilder::fetch(&url)
+            .sha1(sha1)
+            .json()
+            .execute()?
+            .json()
     }
 
     /// Writes the assets index to a file, creating parent directories as needed.

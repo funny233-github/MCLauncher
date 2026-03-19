@@ -11,8 +11,8 @@
 //! ## Example
 //!
 //! ```no_run
-//! use launcher::config::ConfigHandler;
-//! use launcher::runtime::gameruntime;
+//! use gluon::config::ConfigHandler;
+//! use gluon::runtime::gameruntime;
 //!
 //! let config = ConfigHandler::read().expect("Failed to read config");
 //! gameruntime(&config).expect("Failed to launch Minecraft");
