@@ -27,18 +27,23 @@
 
 use crate::config::{MCLoader, RuntimeConfig};
 use installer::{InstallTask, TaskPool};
-use mc_api::{
-    fabric::{Loader, Profile},
-    official::{Artifact, Assets, Version, VersionManifest},
-};
+use mc_api::official::{Artifact, Assets, Version};
 use regex::Regex;
 use std::{
     collections::VecDeque,
     fs,
     path::{Path, PathBuf},
 };
-use std::{fs::File, io::Read};
 use zip::ZipArchive;
+
+mod fabric;
+mod mc_installer;
+mod neoforge;
+mod vanilla;
+
+use fabric::FabricInstaller;
+use mc_installer::MCInstaller;
+use vanilla::VanillaInstaller;
 
 /// Operating system identifier set at compile time.
 #[cfg(target_os = "windows")]
@@ -129,62 +134,12 @@ pub enum InstallType {
 /// - `anyhow::Error` if file system operations fail
 /// - `anyhow::Error` if network errors occur during download
 pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    let version_json_file_path = Path::new(&config.game_dir)
-        .join("versions")
-        .join(&config.game_version)
-        .join(config.game_version.clone() + ".json");
-
-    if !version_json_file_path.exists() {
-        let version = fetch_version(config)?;
-        version.install(&version_json_file_path);
+    match config.loader {
+        MCLoader::None => VanillaInstaller::install(config)?,
+        MCLoader::Fabric(_) => FabricInstaller::install(config)?,
+        MCLoader::Neoforge(_) => todo!(),
     }
-
-    let native_dir = Path::new(&config.game_dir).join("natives");
-    fs::create_dir_all(native_dir).unwrap_or(());
-
-    let mut version_json_file = File::open(version_json_file_path)?;
-    let mut content = String::new();
-    version_json_file.read_to_string(&mut content)?;
-
-    let version: Version = serde_json::from_str(&content)?;
-    install_dependencies(config, &version)?;
     Ok(())
-}
-
-/// Fetches the version manifest for the specified Minecraft version.
-///
-/// Downloads the version manifest, verifies the requested version exists,
-/// and optionally merges Fabric loader information if configured.
-///
-/// # Errors
-/// - `anyhow::Error` if the version manifest cannot be fetched
-/// - `anyhow::Error` if the requested game version is not found in manifest
-/// - `anyhow::Error` if a Fabric loader version is specified but not found
-/// - `anyhow::Error` if the Fabric profile cannot be fetched or merged
-fn fetch_version(config: &RuntimeConfig) -> anyhow::Result<Version> {
-    println!("fetching version manifest...");
-    let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
-
-    if !manifest.versions.iter().any(|x| x.id == config.vanilla) {
-        return Err(anyhow::anyhow!(
-            "Cant' find the minecraft version {}",
-            &config.game_version
-        ));
-    }
-
-    println!("fetching version...");
-    let mut version = Version::fetch(&manifest, &config.vanilla, &config.mirror.version_manifest)?;
-    if let MCLoader::Fabric(v) = &config.loader {
-        println!("fetching fabric loaders version...");
-        let loaders = Loader::fetch(&config.mirror.fabric_meta)?;
-        if !loaders.iter().any(|x| &x.version == v) {
-            return Err(anyhow::anyhow!("Cant' find the loader version {v}"));
-        }
-        println!("fetching fabric profile...");
-        let profile = Profile::fetch(&config.mirror.fabric_meta, &config.vanilla, v)?;
-        version.merge(&profile);
-    }
-    Ok(version)
 }
 
 /// Installs all game dependencies for a specific version.
