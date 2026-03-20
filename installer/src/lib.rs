@@ -270,7 +270,7 @@ pub async fn fetch_bytes(
         let send = client
             .get(url)
             .header(header::USER_AGENT, "github.com/funny233-github/MCLauncher")
-            .timeout(Duration::from_secs(128))
+            .timeout(Duration::from_secs(1000))
             .send()
             .await;
 

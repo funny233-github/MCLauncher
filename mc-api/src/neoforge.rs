@@ -1,6 +1,8 @@
 use crate::fetcher::{FetcherBuilder, FetcherResult};
+use crate::official;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::Path;
@@ -127,5 +129,124 @@ impl Installer {
         }
 
         Ok(())
+    }
+}
+
+/// Game and JVM arguments for Neoforge.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Arguments {
+    /// Arguments to pass to the Minecraft game process.
+    pub game: Vec<serde_json::Value>,
+    /// Arguments to pass to the Java virtual machine.
+    pub jvm: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Artifact {
+    pub url: String,
+    pub md5: Option<String>,
+    pub sha1: Option<String>,
+    pub sha256: Option<String>,
+    pub sha512: Option<String>,
+    pub size: Option<i32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Downloads {
+    pub artifact: Artifact,
+}
+
+/// Library dependency from a Neoforge profile.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Library {
+    pub name: String,
+    pub downloads: Downloads,
+}
+
+impl From<Library> for official::Library {
+    fn from(lib: Library) -> Self {
+        let artifact = official::Artifact {
+            path: to_path(&lib.name),
+            sha1: lib.downloads.artifact.sha1,
+            size: lib.downloads.artifact.size,
+            url: lib.downloads.artifact.url,
+        };
+        let downloads = official::LibDownloads {
+            artifact,
+            classifiers: None,
+        };
+        official::Library {
+            downloads,
+            name: lib.name,
+            natives: None,
+            rules: None,
+        }
+    }
+}
+
+/// Converts a Maven coordinate name to a file path.
+///
+/// Transforms a Maven coordinate string (e.g., `group:artifact:version`) into the
+/// corresponding file path used in Minecraft's library directory structure.
+fn to_path(name: &str) -> String {
+    let mut name: VecDeque<&str> = name.split(':').collect();
+    let version = &name.pop_back().unwrap();
+    let file = &name.pop_back().unwrap();
+    let mut res = String::new();
+    for i in name {
+        res += i.replace('.', "/").as_ref();
+        res += "/";
+    }
+    format!("{res}{file}/{version}/{file}-{version}.jar")
+}
+
+#[test]
+fn test_name_to_path() {
+    let name = "net.fabricmc:sponge-mixin:0.13.3+mixin.0.8.5".to_owned();
+    let ans = "net/fabricmc/sponge-mixin/0.13.3+mixin.0.8.5/sponge-mixin-0.13.3+mixin.0.8.5.jar"
+        .to_owned();
+    assert_eq!(to_path(&name), ans);
+}
+
+/// Neoforge loader profile JSON for the standard Minecraft launcher.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Profile {
+    /// Profile ID (e.g., "neoforge-21.11.0-beta").
+    pub id: String,
+    /// Minecraft version this profile inherits from.
+    #[serde(rename = "inheritsFrom")]
+    pub inherits_from: String,
+    /// Release timestamp.
+    #[serde(rename = "releaseTime")]
+    pub release_time: String,
+    /// Last update timestamp.
+    pub time: String,
+    /// Profile type (typically "release" or "snapshot").
+    pub r#type: String,
+    /// Main class to launch.
+    #[serde(rename = "mainClass")]
+    pub main_class: String,
+    /// Game and JVM arguments.
+    pub arguments: Arguments,
+    /// Required library dependencies.
+    pub libraries: Vec<Library>,
+}
+
+/// Implementation of `official::MergeVersion` for `Profile`.
+impl official::MergeVersion for Profile {
+    fn official_libraries(&self) -> Option<Vec<official::Library>> {
+        Some(self.libraries.iter().map(|x| x.clone().into()).collect())
+    }
+
+    fn main_class(&self) -> Option<String> {
+        Some(self.main_class.clone())
+    }
+
+    fn arguments_game(&self) -> Option<Vec<serde_json::Value>> {
+        None
+    }
+
+    fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
+        Some(self.arguments.jvm.clone())
     }
 }

@@ -43,6 +43,7 @@ mod vanilla;
 
 use fabric::FabricInstaller;
 use mc_installer::MCInstaller;
+use neoforge::NeoforgeInstaller;
 use vanilla::VanillaInstaller;
 
 /// Operating system identifier set at compile time.
@@ -137,7 +138,7 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
     match config.loader {
         MCLoader::None => VanillaInstaller::install(config)?,
         MCLoader::Fabric(_) => FabricInstaller::install(config)?,
-        MCLoader::Neoforge(_) => todo!(),
+        MCLoader::Neoforge(_) => NeoforgeInstaller::install(config)?,
     }
     Ok(())
 }
@@ -206,14 +207,19 @@ fn libraries_installtask(
         .map(|x| {
             let artifact = &x.downloads.artifact;
             let path = &artifact.path;
-            let mirror = if artifact.url == "https://maven.fabricmc.net/" {
-                fabric_maven_mirror
+            let fabric_domain = "https://maven.fabricmc.net/";
+            let vanilla_domain = "https://libraries.minecraft.net";
+            let url = if artifact.url.starts_with(vanilla_domain) {
+                libraries_mirror.to_string() + path
+            } else if artifact.url.starts_with(fabric_domain) {
+                fabric_maven_mirror.to_string() + path
             } else {
-                libraries_mirror
+                artifact.url.clone()
             };
+
             let save_file = Path::new(game_dir).join("libraries").join(path);
             Ok(InstallTask {
-                url: mirror.to_owned() + path,
+                url,
                 sha1: x.downloads.artifact.sha1.clone(),
                 message: format!(
                     "library {} installed",
@@ -232,6 +238,7 @@ fn libraries_installtask(
 /// specific Minecraft version.
 #[test]
 fn test_libraries_installtask() {
+    use mc_api::official::VersionManifest;
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
@@ -301,6 +308,7 @@ fn native_installtask(
 /// the current platform.
 #[test]
 fn test_native_installtask() {
+    use mc_api::official::VersionManifest;
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
@@ -417,6 +425,7 @@ fn client_installtask(
 /// URL replacement and file path construction.
 #[test]
 fn test_client_installtask() {
+    use mc_api::official::VersionManifest;
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
@@ -469,6 +478,7 @@ fn assets_installtask(
 /// assets in the version's asset index.
 #[test]
 fn test_assets_installtask() {
+    use mc_api::official::VersionManifest;
     let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     let manifest = VersionManifest::fetch(manifest_mirror).unwrap();
     let game_dir = "test_dir/";
