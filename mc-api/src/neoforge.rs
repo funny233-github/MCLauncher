@@ -290,3 +290,64 @@ pub struct InstallerProfile {
     #[serde(rename = "serverJarPath")]
     pub server_jar_path: String,
 }
+
+/// Extracts possible Minecraft version candidates from a `NeoForge` version string.
+///
+/// `NeoForge` version format: `{mc_major}.{mc_minor}.{neoforge_version}[-beta]`
+/// For example:
+/// - `21.1.1` -> candidates: `["1.21.1", "21.1"]`
+/// - `20.2.88` -> candidates: `["1.20.2", "20.2"]`
+#[must_use]
+pub fn extract_mc_version_candidates(neoforge_version: &str) -> Vec<String> {
+    let parts: Vec<&str> = neoforge_version.split(['.', '-']).collect();
+    if parts.len() >= 2 {
+        let major = parts[0];
+        let minor = parts[1];
+        vec![format!("1.{major}.{minor}"), format!("{major}.{minor}")]
+    } else if parts.len() == 1 {
+        let major = parts[0];
+        vec![format!("1.{major}"), major.to_string()]
+    } else {
+        vec![]
+    }
+}
+
+/// Groups `NeoForge` versions by their corresponding Minecraft version.
+///
+/// Uses the provided MC version list to resolve the correct MC version
+/// (handles both `1.x.y` and `x.y` formats).
+///
+/// Returns a `HashMap` where keys are MC version strings
+/// and values are vectors of `NeoForge` version strings, sorted from latest to oldest.
+#[must_use]
+pub fn group_by_mc_version(
+    neoforge_versions: &[String],
+    mc_versions: &[String],
+) -> HashMap<String, Vec<String>> {
+    let mc_set: std::collections::HashSet<&str> = mc_versions.iter().map(String::as_str).collect();
+    let mut groups: HashMap<String, Vec<String>> = HashMap::new();
+
+    for ver in neoforge_versions {
+        let candidates = extract_mc_version_candidates(ver);
+        if let Some(mc_ver) = candidates.iter().find(|c| mc_set.contains(c.as_str())) {
+            groups.entry(mc_ver.clone()).or_default().push(ver.clone());
+        }
+    }
+
+    // Sort each group from latest to oldest
+    for versions in groups.values_mut() {
+        versions.sort_by(|a, b| {
+            let a_parts: Vec<&str> = a.split(['.', '-']).collect();
+            let b_parts: Vec<&str> = b.split(['.', '-']).collect();
+            for (a_part, b_part) in a_parts.iter().zip(b_parts.iter()) {
+                if let (Ok(a_num), Ok(b_num)) = (a_part.parse::<u32>(), b_part.parse::<u32>()) {
+                    if a_num != b_num {
+                        return b_num.cmp(&a_num);
+                    }
+                }
+            }
+            b.len().cmp(&a.len())
+        });
+    }
+    groups
+}
