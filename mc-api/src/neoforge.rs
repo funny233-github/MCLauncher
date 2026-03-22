@@ -2,6 +2,7 @@ use crate::fetcher::{FetcherBuilder, FetcherResult};
 use crate::official;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::fs;
 use std::io::{Cursor, Read};
@@ -133,7 +134,7 @@ impl Installer {
 }
 
 /// Game and JVM arguments for Neoforge.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Arguments {
     /// Arguments to pass to the Minecraft game process.
     pub game: Vec<serde_json::Value>,
@@ -149,6 +150,7 @@ pub struct Artifact {
     pub sha256: Option<String>,
     pub sha512: Option<String>,
     pub size: Option<i32>,
+    pub path: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -166,7 +168,7 @@ pub struct Library {
 impl From<Library> for official::Library {
     fn from(lib: Library) -> Self {
         let artifact = official::Artifact {
-            path: to_path(&lib.name),
+            path: lib.downloads.artifact.path,
             sha1: lib.downloads.artifact.sha1,
             size: lib.downloads.artifact.size,
             url: lib.downloads.artifact.url,
@@ -188,7 +190,10 @@ impl From<Library> for official::Library {
 ///
 /// Transforms a Maven coordinate string (e.g., `group:artifact:version`) into the
 /// corresponding file path used in Minecraft's library directory structure.
-fn to_path(name: &str) -> String {
+/// # Panics
+/// TODO complete docs
+#[must_use]
+pub fn to_path(name: &str) -> String {
     let mut name: VecDeque<&str> = name.split(':').collect();
     let version = &name.pop_back().unwrap();
     let file = &name.pop_back().unwrap();
@@ -209,7 +214,7 @@ fn test_name_to_path() {
 }
 
 /// Neoforge loader profile JSON for the standard Minecraft launcher.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Profile {
     /// Profile ID (e.g., "neoforge-21.11.0-beta").
     pub id: String,
@@ -243,10 +248,45 @@ impl official::MergeVersion for Profile {
     }
 
     fn arguments_game(&self) -> Option<Vec<serde_json::Value>> {
-        None
+        Some(self.arguments.game.clone())
     }
 
     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
         Some(self.arguments.jvm.clone())
     }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Processor {
+    pub sides: Option<Vec<String>>,
+    pub jar: String,
+    pub classpath: Vec<String>,
+    pub args: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DataMapValue {
+    pub client: String,
+    pub server: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InstallerProfile {
+    pub spec: usize,
+    pub profile: String,
+    pub version: String,
+    pub icon: String,
+    pub minecraft: String,
+    pub json: String,
+    pub logo: String,
+    pub welcome: String,
+    #[serde(rename = "mirrorList")]
+    pub mirror_list: String,
+    #[serde(rename = "hideExtract")]
+    pub hide_extract: bool,
+    pub data: HashMap<String, DataMapValue>,
+    pub processors: Vec<Processor>,
+    pub libraries: Vec<Library>,
+    #[serde(rename = "serverJarPath")]
+    pub server_jar_path: String,
 }

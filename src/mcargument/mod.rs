@@ -60,11 +60,17 @@ fn replace_arguments_from_jvm(
         .join("natives")
         .to_string_lossy()
         .into();
+    let library_dir: String = Path::new(&handle.config().game_dir)
+        .join("libraries")
+        .to_str()
+        .unwrap()
+        .to_string();
     let valuemap = HashMap::from([
         ("${natives_directory}", natives_dir),
         ("${launcher_name}", "my_launcher".into()),
         ("${launcher_version}", "114.514".into()),
         ("${classpath}", handle.get_classpaths(version_api)?),
+        ("${library_directory}", library_dir),
     ]);
     Ok(replace_arguments(args, &valuemap))
 }

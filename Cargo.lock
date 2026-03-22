@@ -666,6 +666,7 @@ dependencies = [
  "tokio",
  "toml",
  "uuid",
+ "vecmap",
  "version-compare",
  "walkdir",
  "zip",
@@ -2308,6 +2309,12 @@ dependencies = [
  "rand",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "vecmap"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33e6da144f897f2b9b339022f64ffd5ae17faefee4e8b1a5dd7fe599a4a5424b"
 
 [[package]]
 name = "version-compare"

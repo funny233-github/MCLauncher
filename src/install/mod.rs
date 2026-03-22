@@ -37,6 +37,7 @@ use std::{
 use zip::ZipArchive;
 
 mod fabric;
+mod mavencoord;
 mod mc_installer;
 mod neoforge;
 mod vanilla;
