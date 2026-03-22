@@ -8,6 +8,11 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+/// Installer for vanilla (unmodded) Minecraft.
+///
+/// Downloads and installs the official Minecraft version without any mod loader.
+/// If the version JSON already exists in the game directory, it skips downloading
+/// the manifest and proceeds directly to installing dependencies.
 #[derive(Default)]
 pub(super) struct VanillaInstaller;
 
@@ -36,6 +41,15 @@ impl MCInstaller for VanillaInstaller {
     }
 }
 
+/// Fetches the version JSON for a vanilla Minecraft version.
+///
+/// Downloads the version manifest, validates that the target version exists,
+/// and fetches the corresponding version JSON.
+///
+/// # Errors
+/// - `anyhow::Error` if the version manifest cannot be fetched
+/// - `anyhow::Error` if the target Minecraft version is not found
+/// - `anyhow::Error` if the version JSON cannot be fetched
 fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;

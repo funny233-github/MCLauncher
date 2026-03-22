@@ -16,6 +16,14 @@ use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+/// Installer for NeoForge-modded Minecraft.
+///
+/// Handles the complete NeoForge installation workflow:
+/// 1. Downloads and extracts the NeoForge installer JAR
+/// 2. Fetches the base Minecraft version JSON and merges the NeoForge profile
+/// 3. Installs all standard game dependencies (assets, libraries, natives)
+/// 4. Installs NeoForge-specific installer dependencies
+/// 5. Runs NeoForge installer processors (binary patching, configuration)
 #[derive(Default)]
 pub(super) struct NeoforgeInstaller;
 
@@ -63,6 +71,17 @@ impl MCInstaller for NeoforgeInstaller {
     }
 }
 
+/// Fetches the merged version JSON for a NeoForge-modded Minecraft version.
+///
+/// Reads the NeoForge profile from the extracted installer directory,
+/// fetches the base Minecraft version, and merges them together.
+///
+/// # Errors
+/// - `anyhow::Error` if the NeoForge profile JSON cannot be read or parsed
+/// - `anyhow::Error` if the version manifest cannot be fetched
+/// - `anyhow::Error` if the target Minecraft version is not found
+/// - `anyhow::Error` if the base version JSON cannot be fetched
+/// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
 fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
@@ -87,6 +106,14 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     Ok(version)
 }
 
+/// Installs NeoForge installer-specific library dependencies.
+///
+/// Downloads all libraries required by the NeoForge installer processors
+/// (e.g., binary patching tools, configuration generators).
+///
+/// # Errors
+/// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
+/// - `anyhow::Error` if the installer profile cannot be read or parsed
 fn install_installer_dependencies(config: &RuntimeConfig) -> Result<()> {
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
@@ -106,6 +133,10 @@ fn install_installer_dependencies(config: &RuntimeConfig) -> Result<()> {
     Ok(())
 }
 
+/// Creates download tasks for NeoForge installer library dependencies.
+///
+/// Each library is downloaded from its artifact URL and saved to the
+/// game's libraries directory based on the artifact path.
 fn libraries_installtask(path: &str, profile: &InstallerProfile) -> VecDeque<InstallTask> {
     profile
         .libraries
@@ -123,6 +154,21 @@ fn libraries_installtask(path: &str, profile: &InstallerProfile) -> VecDeque<Ins
         .collect()
 }
 
+/// Builds the variable substitution map for NeoForge installer processors.
+///
+/// NeoForge installer processors use template variables (e.g., `{SIDE}`,
+/// `{MINECRAFT_JAR}`, `{ROOT}`) in their arguments. This function resolves
+/// all such variables using the current configuration and installer profile data.
+///
+/// Maven coordinate references (wrapped in `[...]`) are converted to absolute
+/// file paths. String literals (wrapped in `'...'`) are unwrapped. Special
+/// variables like `BINPATCH` are resolved relative to the installer directory.
+///
+/// # Errors
+/// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
+/// - `anyhow::Error` if the installer profile cannot be read or parsed
+/// - `anyhow::Error` if Maven coordinate paths cannot be resolved
+/// - `anyhow::Error` if absolute path conversion fails
 fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
     println!("format variables");
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
@@ -181,6 +227,20 @@ fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
     Ok(variables)
 }
 
+/// Runs NeoForge installer processors to finalize the installation.
+///
+/// Installer processors are Java programs that perform tasks such as binary
+/// patching the Minecraft JAR and generating configuration files. Each processor
+/// is executed via `java -jar` with substituted arguments.
+///
+/// Side filtering is applied: processors marked with non-client sides are skipped.
+///
+/// # Errors
+/// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
+/// - `anyhow::Error` if the installer profile cannot be read or parsed
+/// - `anyhow::Error` if variable substitution fails
+/// - `anyhow::Error` if a processor process cannot be spawned or fails
+/// - `anyhow::Error` if Maven coordinate paths cannot be resolved
 fn process_processors(config: &RuntimeConfig) -> Result<()> {
     println!("process processors");
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {

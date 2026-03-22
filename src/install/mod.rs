@@ -1,7 +1,22 @@
 //! Minecraft game files and libraries installation module.
 //!
 //! Downloads and installs Minecraft game files including version manifests,
-//! libraries, assets, native libraries, and optional mod loaders like Fabric.
+//! libraries, assets, native libraries, and optional mod loaders.
+//!
+//! # Supported Loaders
+//!
+//! | Loader | Installer | Description |
+//! |--------|-----------|-------------|
+//! | Vanilla | [`VanillaInstaller`] | Unmodded Minecraft |
+//! | Fabric | [`FabricInstaller`] | Fabric mod loader |
+//! | NeoForge | [`NeoforgeInstaller`] | NeoForge mod loader with installer processors |
+//!
+//! # Installation Workflow
+//!
+//! 1. Determine the loader type from the runtime configuration
+//! 2. Fetch and merge the loader profile with the base Minecraft version JSON
+//! 3. Download all dependencies (assets, libraries, client JAR, natives)
+//! 4. Execute loader-specific post-install steps (e.g., NeoForge processors)
 //!
 //! # Example
 //! ```no_run
@@ -15,8 +30,9 @@
 //!     window_weight: 100,
 //!     window_height: 100,
 //!     game_dir: "/path/to/game".to_string(),
-//!     game_version: "1.16.5".to_string(),
+//!     game_version: "1.21.1".to_string(),
 //!     java_path: "/path/to/java".to_string(),
+//!     vanilla: "1.21.1".to_string(),
 //!     loader: MCLoader::None,
 //!     mirror: MCMirror::official_mirror(),
 //!     mods: None,
@@ -101,7 +117,8 @@ pub enum InstallType {
 /// Installs Minecraft game files and libraries.
 ///
 /// Handles the complete installation process including downloading version manifests,
-/// libraries, assets, client JAR, and native libraries. Supports optional Fabric mod loader.
+/// libraries, assets, client JAR, and native libraries. Supports vanilla, Fabric,
+/// and NeoForge mod loaders.
 ///
 /// # Example
 /// ```no_run
@@ -115,8 +132,9 @@ pub enum InstallType {
 ///     window_weight: 100,
 ///     window_height: 100,
 ///     game_dir: "/path/to/game".to_string(),
-///     game_version: "1.16.5".to_string(),
+///     game_version: "1.21.1".to_string(),
 ///     java_path: "/path/to/java".to_string(),
+///     vanilla: "1.21.1".to_string(),
 ///     loader: MCLoader::None,
 ///     mirror: MCMirror::official_mirror(),
 ///     mods: None,

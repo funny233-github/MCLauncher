@@ -11,6 +11,12 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+/// Installer for Fabric-modded Minecraft.
+///
+/// Downloads the official Minecraft version, merges the Fabric loader profile,
+/// and installs all required dependencies. If the version JSON already exists
+/// in the game directory, it skips the manifest fetch and proceeds directly
+/// to installing dependencies.
 pub(super) struct FabricInstaller;
 
 impl MCInstaller for FabricInstaller {
@@ -38,6 +44,17 @@ impl MCInstaller for FabricInstaller {
     }
 }
 
+/// Fetches the merged version JSON for a Fabric-modded Minecraft version.
+///
+/// Downloads the official Minecraft version manifest, fetches the base version
+/// JSON, retrieves the Fabric loader profile, and merges them together.
+///
+/// # Errors
+/// - `anyhow::Error` if the version manifest cannot be fetched
+/// - `anyhow::Error` if the target Minecraft version is not found
+/// - `anyhow::Error` if the Fabric loader version is not found
+/// - `anyhow::Error` if the Fabric profile cannot be fetched
+/// - `anyhow::Error` if the loader is not `MCLoader::Fabric`
 fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     println!("fetching version manifest...");
     let manifest = VersionManifest::fetch(&config.mirror.version_manifest)?;
