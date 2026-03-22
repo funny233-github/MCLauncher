@@ -142,26 +142,38 @@ pub struct Arguments {
     pub jvm: Vec<serde_json::Value>,
 }
 
+/// Download artifact for a Neoforge library.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Artifact {
+    /// Download URL for the artifact.
     pub url: String,
+    /// MD5 hash for integrity verification.
     pub md5: Option<String>,
+    /// SHA1 hash for integrity verification.
     pub sha1: Option<String>,
+    /// SHA256 hash for integrity verification.
     pub sha256: Option<String>,
+    /// SHA512 hash for integrity verification.
     pub sha512: Option<String>,
+    /// File size in bytes.
     pub size: Option<i32>,
+    /// Relative storage path following Maven structure.
     pub path: String,
 }
 
+/// Download information for a Neoforge library.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Downloads {
+    /// Main library artifact.
     pub artifact: Artifact,
 }
 
 /// Library dependency from a Neoforge profile.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Library {
+    /// Maven coordinate name (e.g., `net.neoforged:neoforge:21.0.0-beta`).
     pub name: String,
+    /// Download information for this library.
     pub downloads: Downloads,
 }
 
@@ -190,8 +202,16 @@ impl From<Library> for official::Library {
 ///
 /// Transforms a Maven coordinate string (e.g., `group:artifact:version`) into the
 /// corresponding file path used in Minecraft's library directory structure.
+///
 /// # Panics
-/// TODO complete docs
+/// Panics if the name does not contain at least three colon-separated segments.
+///
+/// # Example
+/// ```
+/// use mc_api::neoforge::to_path;
+/// let path = to_path("net.fabricmc:sponge-mixin:0.13.3+mixin.0.8.5");
+/// assert_eq!(path, "net/fabricmc/sponge-mixin/0.13.3+mixin.0.8.5/sponge-mixin-0.13.3+mixin.0.8.5.jar");
+/// ```
 #[must_use]
 pub fn to_path(name: &str) -> String {
     let mut name: VecDeque<&str> = name.split(':').collect();
@@ -256,37 +276,60 @@ impl official::MergeVersion for Profile {
     }
 }
 
+/// Installer processor that runs post-installation tasks.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Processor {
+    /// Target sides this processor should run on (e.g., `["client"]`).
     pub sides: Option<Vec<String>>,
+    /// Maven coordinate of the processor JAR.
     pub jar: String,
+    /// Classpath entries required by the processor.
     pub classpath: Vec<String>,
+    /// Arguments passed to the processor main class.
     pub args: Vec<String>,
 }
 
+/// Entry in the installer data map with platform-specific values.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DataMapValue {
+    /// Value to use on the client side.
     pub client: String,
+    /// Value to use on the server side.
     pub server: String,
 }
 
+/// Neoforge installer profile describing installation steps and metadata.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InstallerProfile {
+    /// Installer specification version.
     pub spec: usize,
+    /// Profile name.
     pub profile: String,
+    /// Neoforge version string.
     pub version: String,
+    /// Base64-encoded icon data.
     pub icon: String,
+    /// Target Minecraft version.
     pub minecraft: String,
+    /// Maven coordinate of the version JSON.
     pub json: String,
+    /// Maven coordinate of the logo file.
     pub logo: String,
+    /// Welcome message shown during installation.
     pub welcome: String,
+    /// URL of the mirror list file.
     #[serde(rename = "mirrorList")]
     pub mirror_list: String,
+    /// Whether to hide the extraction step in the installer UI.
     #[serde(rename = "hideExtract")]
     pub hide_extract: bool,
+    /// Data map used by processors; keys are variable names.
     pub data: HashMap<String, DataMapValue>,
+    /// Ordered list of processors to run during installation.
     pub processors: Vec<Processor>,
+    /// Libraries required by the installer.
     pub libraries: Vec<Library>,
+    /// Path to the server JAR for server-side installation.
     #[serde(rename = "serverJarPath")]
     pub server_jar_path: String,
 }
@@ -297,6 +340,13 @@ pub struct InstallerProfile {
 /// For example:
 /// - `21.1.1` -> candidates: `["1.21.1", "21.1"]`
 /// - `20.2.88` -> candidates: `["1.20.2", "20.2"]`
+///
+/// # Example
+/// ```
+/// use mc_api::neoforge::extract_mc_version_candidates;
+/// assert_eq!(extract_mc_version_candidates("21.1.1"), vec!["1.21.1", "21.1"]);
+/// assert_eq!(extract_mc_version_candidates("20.2.88"), vec!["1.20.2", "20.2"]);
+/// ```
 #[must_use]
 pub fn extract_mc_version_candidates(neoforge_version: &str) -> Vec<String> {
     let parts: Vec<&str> = neoforge_version.split(['.', '-']).collect();
@@ -319,6 +369,15 @@ pub fn extract_mc_version_candidates(neoforge_version: &str) -> Vec<String> {
 ///
 /// Returns a `HashMap` where keys are MC version strings
 /// and values are vectors of `NeoForge` version strings, sorted from latest to oldest.
+///
+/// # Example
+/// ```
+/// use mc_api::neoforge::group_by_mc_version;
+/// let neoforge = ["21.1.1".to_string(), "21.1.2".to_string()];
+/// let mc = ["1.21.1".to_string(), "1.20.2".to_string()];
+/// let groups = group_by_mc_version(&neoforge, &mc);
+/// assert!(groups.contains_key("1.21.1"));
+/// ```
 #[must_use]
 pub fn group_by_mc_version(
     neoforge_versions: &[String],
