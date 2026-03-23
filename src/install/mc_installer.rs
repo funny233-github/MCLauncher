@@ -4,7 +4,7 @@ use anyhow::Result;
 /// Trait for Minecraft installer implementations.
 ///
 /// Provides a uniform interface for installing Minecraft with different mod loaders.
-/// Each loader variant (vanilla, Fabric, NeoForge) implements this trait to handle
+/// Each loader variant (vanilla, Fabric, `NeoForge`) implements this trait to handle
 /// its specific installation workflow.
 pub(super) trait MCInstaller {
     /// Installs Minecraft game files and loader dependencies.

@@ -18,12 +18,12 @@ use std::process::{Command, Stdio};
 
 /// Installer for NeoForge-modded Minecraft.
 ///
-/// Handles the complete NeoForge installation workflow:
-/// 1. Downloads and extracts the NeoForge installer JAR
-/// 2. Fetches the base Minecraft version JSON and merges the NeoForge profile
+/// Handles the complete `NeoForge` installation workflow:
+/// 1. Downloads and extracts the `NeoForge` installer JAR
+/// 2. Fetches the base Minecraft version JSON and merges the `NeoForge` profile
 /// 3. Installs all standard game dependencies (assets, libraries, natives)
 /// 4. Installs NeoForge-specific installer dependencies
-/// 5. Runs NeoForge installer processors (binary patching, configuration)
+/// 5. Runs `NeoForge` installer processors (binary patching, configuration)
 #[derive(Default)]
 pub(super) struct NeoforgeInstaller;
 
@@ -73,11 +73,11 @@ impl MCInstaller for NeoforgeInstaller {
 
 /// Fetches the merged version JSON for a NeoForge-modded Minecraft version.
 ///
-/// Reads the NeoForge profile from the extracted installer directory,
+/// Reads the `NeoForge` profile from the extracted installer directory,
 /// fetches the base Minecraft version, and merges them together.
 ///
 /// # Errors
-/// - `anyhow::Error` if the NeoForge profile JSON cannot be read or parsed
+/// - `anyhow::Error` if the `NeoForge` profile JSON cannot be read or parsed
 /// - `anyhow::Error` if the version manifest cannot be fetched
 /// - `anyhow::Error` if the target Minecraft version is not found
 /// - `anyhow::Error` if the base version JSON cannot be fetched
@@ -106,9 +106,9 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     Ok(version)
 }
 
-/// Installs NeoForge installer-specific library dependencies.
+/// Installs `NeoForge` installer-specific library dependencies.
 ///
-/// Downloads all libraries required by the NeoForge installer processors
+/// Downloads all libraries required by the `NeoForge` installer processors
 /// (e.g., binary patching tools, configuration generators).
 ///
 /// # Errors
@@ -133,7 +133,7 @@ fn install_installer_dependencies(config: &RuntimeConfig) -> Result<()> {
     Ok(())
 }
 
-/// Creates download tasks for NeoForge installer library dependencies.
+/// Creates download tasks for `NeoForge` installer library dependencies.
 ///
 /// Each library is downloaded from its artifact URL and saved to the
 /// game's libraries directory based on the artifact path.
@@ -154,9 +154,9 @@ fn libraries_installtask(path: &str, profile: &InstallerProfile) -> VecDeque<Ins
         .collect()
 }
 
-/// Builds the variable substitution map for NeoForge installer processors.
+/// Builds the variable substitution map for `NeoForge` installer processors.
 ///
-/// NeoForge installer processors use template variables (e.g., `{SIDE}`,
+/// `NeoForge` installer processors use template variables (e.g., `{SIDE}`,
 /// `{MINECRAFT_JAR}`, `{ROOT}`) in their arguments. This function resolves
 /// all such variables using the current configuration and installer profile data.
 ///
@@ -227,7 +227,7 @@ fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
     Ok(variables)
 }
 
-/// Runs NeoForge installer processors to finalize the installation.
+/// Runs `NeoForge` installer processors to finalize the installation.
 ///
 /// Installer processors are Java programs that perform tasks such as binary
 /// patching the Minecraft JAR and generating configuration files. Each processor
@@ -281,7 +281,9 @@ fn process_processors(config: &RuntimeConfig) -> Result<()> {
         log::debug!("args:{args:#?}");
 
         let classpath = MavenCoord::parse(&process.classpath[0]).to_path_string();
-        let classpath = tmp_dir.join(classpath);
+        let classpath = Path::new(&config.game_dir)
+            .join("libraries")
+            .join(classpath);
         log::debug!("program path: {}", classpath.to_str().unwrap());
 
         let mut command = Command::new(&config.java_path)

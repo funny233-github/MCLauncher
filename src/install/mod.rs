@@ -9,14 +9,14 @@
 //! |--------|-----------|-------------|
 //! | Vanilla | [`VanillaInstaller`] | Unmodded Minecraft |
 //! | Fabric | [`FabricInstaller`] | Fabric mod loader |
-//! | NeoForge | [`NeoforgeInstaller`] | NeoForge mod loader with installer processors |
+//! | `NeoForge` | [`NeoforgeInstaller`] | `NeoForge` mod loader with installer processors |
 //!
 //! # Installation Workflow
 //!
 //! 1. Determine the loader type from the runtime configuration
 //! 2. Fetch and merge the loader profile with the base Minecraft version JSON
 //! 3. Download all dependencies (assets, libraries, client JAR, natives)
-//! 4. Execute loader-specific post-install steps (e.g., NeoForge processors)
+//! 4. Execute loader-specific post-install steps (e.g., `NeoForge` processors)
 //!
 //! # Example
 //! ```no_run
@@ -118,7 +118,7 @@ pub enum InstallType {
 ///
 /// Handles the complete installation process including downloading version manifests,
 /// libraries, assets, client JAR, and native libraries. Supports vanilla, Fabric,
-/// and NeoForge mod loaders.
+/// and `NeoForge` mod loaders.
 ///
 /// # Example
 /// ```no_run
