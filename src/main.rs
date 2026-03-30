@@ -1,10 +1,12 @@
 use clap::{Parser, Subcommand};
 use clap_cargo::style;
-use launcher::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
-use launcher::install::install_mc;
-use launcher::modmanage;
-use launcher::runtime::gameruntime;
-use mc_api::{fabric::Loader, official::VersionManifest};
+use gluon::config::{ConfigHandler, MCLoader, MCMirror, VersionType};
+use gluon::install::install_mc;
+use gluon::modmanage;
+use gluon::runtime::gameruntime;
+use mc_api::{fabric, neoforge, official::VersionManifest};
+use tabled::{settings::Style, Table};
+use version_compare::Version;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None, styles = style::CLAP_STYLING)]
@@ -34,6 +36,10 @@ enum Command {
         /// Install fabric loader
         #[arg(long)]
         fabric: Option<String>,
+
+        /// Install neoforge loader
+        #[arg(long)]
+        neoforge: Option<String>,
     },
 
     /// Run the game
@@ -75,6 +81,7 @@ enum Account {
 #[derive(Subcommand, Debug)]
 enum Loaders {
     Fabric,
+    Neoforge,
 }
 
 #[derive(Subcommand, Debug)]
@@ -136,6 +143,38 @@ fn print_version_list(name: &str, versions: &[String], limit: usize) {
     );
 }
 
+fn print_neoforge_table(neoforge_versions: &[String], mc_releases: &[String]) {
+    let neoforge_groups = neoforge::group_by_mc_version(neoforge_versions, mc_releases);
+
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    rows.push(vec![
+        "MC Version".to_string(),
+        "Latest NeoForge".to_string(),
+        "Total".to_string(),
+    ]);
+
+    for mc_ver in mc_releases {
+        if let Some(neoforge_list) = neoforge_groups.get(mc_ver) {
+            let latest = neoforge_list.first().cloned().unwrap_or_default();
+            rows.push(vec![
+                mc_ver.clone(),
+                latest,
+                neoforge_list.len().to_string(),
+            ]);
+        }
+    }
+
+    let mut table: Table = rows.into_iter().collect();
+    println!(
+        "Available NeoForge versions by MC version:\n{}",
+        table.with(Style::modern())
+    );
+}
+
+#[allow(
+    clippy::too_many_lines,
+    reason = "Current implementation is easy to edit, need too many lines"
+)]
 fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.command {
@@ -146,22 +185,46 @@ fn handle_args() -> anyhow::Result<()> {
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
             match sub {
-                ListSub::MC {
-                    mc: version_type,
-                    limit: list_limit,
-                } => {
+                ListSub::MC { mc, limit } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
-                        .list(&version_type.into());
-                    print_version_list("Minecraft", &list, list_limit);
+                        .list(&mc.into());
+                    print_version_list("Minecraft", &list, limit);
                 }
-                ListSub::Loader {
-                    loader: _loader,
-                    limit: list_limit,
-                } => {
-                    let l = Loader::fetch(&handle.config().mirror.fabric_meta)?;
-                    let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
-                    print_version_list("fabric loader", &list, list_limit);
-                }
+                ListSub::Loader { loader, limit } => match loader {
+                    Loaders::Fabric => {
+                        let l = fabric::Loader::fetch(&handle.config().mirror.fabric_meta)?;
+                        let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
+                        print_version_list("fabric loader", &list, limit);
+                    }
+                    Loaders::Neoforge => {
+                        let l = neoforge::Loader::fetch(&handle.config().mirror.neoforge_neoforge)?;
+                        let neoforge_versions = l.versioning.versions.version;
+
+                        // Check if game_version is set and valid
+                        if let Some(mc_version) = Version::from(&handle.config().game_version) {
+                            // Filter by MC version
+                            let list: Vec<String> = neoforge_versions
+                                .into_iter()
+                                .filter(|x| {
+                                    if let Some(neoforge_version) = Version::from(x) {
+                                        mc_version.part(1) == neoforge_version.part(0)
+                                            && mc_version.part(2) == neoforge_version.part(1)
+                                    } else {
+                                        false
+                                    }
+                                })
+                                .collect();
+                            print_version_list("neoforge loader", &list, limit);
+                        } else {
+                            // No MC version set, show table grouped by MC version
+                            let manifest =
+                                VersionManifest::fetch(&handle.config().mirror.version_manifest)?;
+                            let mc_releases =
+                                manifest.list(&mc_api::official::VersionType::Release);
+                            print_neoforge_table(&neoforge_versions, &mc_releases);
+                        }
+                    }
+                },
             }
         }
         Command::Account(account_type) => {
@@ -173,7 +236,11 @@ fn handle_args() -> anyhow::Result<()> {
                 Account::Microsoft => handle.add_microsoft_account()?,
             }
         }
-        Command::Install { version, fabric } => {
+        Command::Install {
+            version,
+            fabric,
+            neoforge,
+        } => {
             let mut handle = ConfigHandler::read()?;
             if version.is_none() && fabric.is_none() {
                 install_mc(handle.config())?;
@@ -182,11 +249,18 @@ fn handle_args() -> anyhow::Result<()> {
 
             if let Some(version) = version {
                 println!("Set version to {}", &version);
+                version.clone_into(&mut handle.config_mut().vanilla);
                 handle.config_mut().game_version = version;
             }
+            let game_version = handle.config().game_version.clone();
             if let Some(fabric) = fabric {
                 println!("Set loader to {}", &fabric);
-                handle.config_mut().loader = MCLoader::Fabric(fabric);
+                handle.config_mut().loader = MCLoader::Fabric(fabric.clone());
+
+                handle.config_mut().game_version = format!("{game_version}-fabric-{fabric}");
+            } else if let Some(neoforge) = neoforge {
+                handle.config_mut().loader = MCLoader::Neoforge(neoforge.clone());
+                handle.config_mut().game_version = format!("{game_version}-neoforge-{neoforge}");
             } else {
                 handle.config_mut().loader = MCLoader::None;
             }

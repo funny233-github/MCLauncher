@@ -100,7 +100,8 @@
 //! # Ok::<(), anyhow::Error>(())
 //!
 
-use super::{DomainReplacer, Sha1Compare};
+use super::DomainReplacer;
+use crate::fetcher::FetcherBuilder;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fs, path::Path};
 
@@ -113,31 +114,17 @@ const OS: &str = "linux";
 #[cfg(target_os = "macos")]
 const OS: &str = "osx";
 
-/// Represents the type of Minecraft version.
-///
-/// Used for filtering versions from the version manifest.
-///
-/// # Variants
-///
-/// * `All` - Include all versions (both release and snapshot)
-/// * `Release` - Include only release versions
-/// * `Snapshot` - Include only snapshot versions
+/// Represents the type of Minecraft version used for filtering from the version manifest.
 ///
 /// # Example
-///
 /// ```no_run
 /// use mc_api::official::{VersionManifest, VersionType};
 ///
 /// let mirror = "https://bmclapi2.bangbang93.com/";
 /// let manifest = VersionManifest::fetch(mirror)?;
 ///
-/// // Get all versions
 /// let all = manifest.list(&VersionType::All);
-///
-/// // Get only releases
 /// let releases = manifest.list(&VersionType::Release);
-///
-/// // Get only snapshots
 /// let snapshots = manifest.list(&VersionType::Snapshot);
 ///
 /// println!("Total versions: {}", all.len());
@@ -152,25 +139,12 @@ pub enum VersionType {
     Snapshot,
 }
 
-/// Represents a library artifact download information.
-///
-/// Contains information about a library file that can be downloaded,
-/// including its path, SHA1 hash, size, and download URL.
-///
-/// # Fields
-///
-/// * `path` - The relative path where the library should be stored
-/// * `sha1` - Optional SHA1 hash for integrity verification
-/// * `size` - Optional file size in bytes
-/// * `url` - The URL where the library can be downloaded
-///
-/// # Path Format
+/// Contains download information for a library file.
 ///
 /// The path follows the standard Maven directory structure:
 /// `groupId/path/artifactId/version/artifactId-version.jar`
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::Artifact;
 ///
@@ -183,23 +157,17 @@ pub enum VersionType {
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Artifact {
+    /// Relative storage path following Maven structure.
     pub path: String,
+    /// SHA1 hash for integrity verification.
     pub sha1: Option<String>,
+    /// File size in bytes.
     pub size: Option<i32>,
+    /// Download URL for the library.
     pub url: String,
 }
 
-/// Represents download information for a library.
-///
-/// Contains the main artifact download and optional classifier downloads
-/// for platform-specific libraries (natives).
-///
-/// # Fields
-///
-/// * `artifact` - The main library artifact download information
-/// * `classifiers` - Optional map of platform-specific artifacts (e.g., natives)
-///
-/// # Classifiers
+/// Contains download information for a library including optional platform-specific classifiers.
 ///
 /// Classifiers are used for platform-specific library variants:
 /// - `natives-windows` - Windows native libraries
@@ -207,7 +175,6 @@ pub struct Artifact {
 /// - `natives-osx` - macOS native libraries
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::{LibDownloads, Artifact};
 ///
@@ -223,34 +190,23 @@ pub struct Artifact {
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct LibDownloads {
+    /// Main library artifact.
     pub artifact: Artifact,
+    /// Map of platform-specific artifacts (e.g., natives).
     pub classifiers: Option<HashMap<String, Artifact>>,
 }
 
-/// Represents a rule that determines when a library should be included.
+/// Determines when a library should be included based on OS or other conditions.
 ///
-/// Library rules are used to conditionally include libraries based on
-/// operating system or other conditions.
-///
-/// # Fields
-///
-/// * `action` - Either "allow" or "disallow"
-/// * `os` - Optional operating system filter
-///
-/// # Rule Evaluation
-///
-/// Rules are evaluated in order:
-/// - If action is "allow" and OS matches, library is included
-/// - If action is "disallow" and OS matches, library is excluded
-/// - If no rules match, default behavior is to include the library
+/// Rules are evaluated in order: if action is "allow" and OS matches, the library
+/// is included; if action is "disallow" and OS matches, the library is excluded.
+/// If no rules match, the default behavior is to include the library.
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::Rules;
 /// use std::collections::HashMap;
 ///
-/// // Include library only on Windows
 /// let rule = Rules {
 ///     action: "allow".to_string(),
 ///     os: Some({
@@ -262,79 +218,57 @@ pub struct LibDownloads {
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Rules {
+    /// Either "allow" or "disallow".
     pub action: String,
+    /// Optional operating system filter.
     pub os: Option<HashMap<String, String>>,
 }
 
-/// Represents a library dependency in the version JSON.
+/// Contains comprehensive information about a library dependency including downloads, platform variants, and rules.
 ///
-/// Contains comprehensive information about a library including download
-/// information, platform-specific variants, and inclusion rules.
-///
-/// # Fields
-///
-/// * `downloads` - Download information for the library
-/// * `name` - The Maven coordinate name (groupId:artifactId:version)
-/// * `natives` - Optional map of platform-specific library names
-/// * `rules` - Optional list of inclusion rules
-///
-/// # Platform Filtering
-///
-/// Libraries can be filtered based on the current platform using:
+/// Libraries can be filtered for the current platform using:
 /// - `is_target_lib()` - Checks if library should be included for current OS
 /// - `is_target_native()` - Checks if library is a native library for current OS
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::Library;
 ///
-/// let library  = Library::default();
+/// let library = Library::default();
 ///
-/// // Check if library is needed for current platform
 /// if library.is_target_lib() {
 ///     println!("Library {} is needed", library.name);
 /// }
 ///
-/// // Check if library is a native library
 /// if library.is_target_native() {
 ///     println!("Library {} is a native library", library.name);
 /// }
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct Library {
+    /// Download information for the library.
     pub downloads: LibDownloads,
+    /// Maven coordinate name (groupId:artifactId:version).
     pub name: String,
+    /// Map of platform-specific library names.
     pub natives: Option<HashMap<String, String>>,
+    /// List of inclusion rules.
     pub rules: Option<Vec<Rules>>,
 }
 
 impl Library {
     /// Determines if this library should be included for the current platform.
     ///
-    /// This method evaluates the library's rules to determine if it should be
-    /// included in the classpath for the current operating system.
+    /// Evaluates the library's rules: if no rules exist, the library is included
+    /// (no classifiers). If rules exist, finds a rule that applies to the current OS.
+    /// The library is included if a matching rule exists and has no classifiers.
     ///
-    /// # Rule Evaluation
-    ///
-    /// The method checks:
-    /// - If there are no rules, the library is included (no classifiers)
-    /// - If there are rules, finds a rule that applies to the current OS
-    /// - The library is included if a matching rule exists and has no classifiers
-    ///
-    /// # Platform Detection
-    ///
-    /// The current platform is detected at compile time:
-    /// - Windows → `OS` constant is `"windows"`
-    /// - Linux → `OS` constant is `"linux"`
-    /// - macOS → `OS` constant is `"osx"`
-    ///
-    /// # Returns
-    ///
-    /// Returns `true` if the library should be included, `false` otherwise.
+    /// Platform is detected at compile time:
+    /// - Windows → `OS` = `"windows"`
+    /// - Linux → `OS` = `"linux"`
+    /// - macOS → `OS` = `"osx"`
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version};
     ///
@@ -342,7 +276,6 @@ impl Library {
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
-    /// // Get only libraries needed for current platform
     /// let target_libs: Vec<_> = version.libraries.iter()
     ///     .filter(|lib| lib.is_target_lib())
     ///     .map(|lib| lib.name.clone())
@@ -353,9 +286,7 @@ impl Library {
     /// ```
     ///
     /// # Panics
-    ///
-    /// Panics if a library rule has invalid OS configuration (this is
-    /// unlikely with well-formed version JSON files).
+    /// Panics if a library rule has invalid OS configuration.
     #[must_use]
     pub fn is_target_lib(&self) -> bool {
         if let Some(rule) = &self.rules {
@@ -370,23 +301,12 @@ impl Library {
 
     /// Determines if this library contains a native variant for the current platform.
     ///
-    /// This method checks if the library has platform-specific (native) variants
-    /// and if one exists for the current operating system.
-    ///
-    /// # Native Libraries
-    ///
     /// Native libraries contain compiled code specific to an operating system:
     /// - Windows DLLs (`.dll` files)
     /// - Linux shared objects (`.so` files)
     /// - macOS dynamic libraries (`.dylib` files)
     ///
-    /// # Returns
-    ///
-    /// Returns `true` if the library has a native variant for the current platform,
-    /// `false` otherwise.
-    ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version};
     ///
@@ -394,7 +314,6 @@ impl Library {
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
-    /// // Get only native libraries for current platform
     /// let native_libs: Vec<_> = version.libraries.iter()
     ///     .filter(|lib| lib.is_target_native())
     ///     .map(|lib| lib.name.clone())
@@ -415,21 +334,9 @@ impl Library {
 /// of library dependencies.
 pub type Libraries = Vec<Library>;
 
-/// Represents a version entry in the version manifest.
-///
-/// Contains basic information about a Minecraft version including its type,
-/// URL, and timestamps.
-///
-/// # Fields
-///
-/// * `id` - The version identifier (e.g., "1.20.4", "23w14a")
-/// * `r#type` - The type of version ("release" or "snapshot")
-/// * `url` - The URL to download the version JSON file
-/// * `time` - When this version was published
-/// * `release_time` - When this version was originally released
+/// Basic information about a Minecraft version from the version manifest.
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::Versions;
 ///
@@ -443,26 +350,22 @@ pub type Libraries = Vec<Library>;
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Versions {
+    /// Version identifier (e.g., "1.20.4", "23w14a").
     pub id: String,
+    /// Version type ("release" or "snapshot").
     pub r#type: String,
+    /// URL to download the version JSON file.
     pub url: String,
+    /// When this version was published.
     pub time: String,
+    /// When this version was originally released.
     #[serde[rename = "releaseTime"]]
     pub release_time: String,
 }
 
-/// Represents the latest release and snapshot versions.
-///
-/// Contains the version IDs of the most recent stable release
-/// and the latest snapshot build.
-///
-/// # Fields
-///
-/// * `release` - The latest stable release version ID
-/// * `snapshot` - The latest snapshot version ID
+/// Contains the version IDs of the most recent stable release and latest snapshot.
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::LatestVersion;
 ///
@@ -476,28 +379,19 @@ pub struct Versions {
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LatestVersion {
+    /// Latest stable release version ID.
     pub release: String,
+    /// Latest snapshot version ID.
     pub snapshot: String,
 }
 
-/// Represents the Minecraft version manifest.
+/// Central index containing information about all available Minecraft versions.
 ///
-/// The version manifest is a central index that contains information about
-/// all available Minecraft versions, including the latest releases and snapshots.
-///
-/// # Fields
-///
-/// * `latest` - Information about the latest release and snapshot
-/// * `versions` - List of all available versions
-///
-/// # Usage
-///
-/// The manifest is typically fetched from the official API or a mirror:
+/// The manifest is typically fetched from:
 /// - Official: `https://launchermeta.mojang.com/mc/game/version_manifest.json`
 /// - BMCLAPI: `https://bmclapi2.bangbang93.com/mc/game/version_manifest.json`
 ///
 /// # Example
-///
 /// ```no_run
 /// use mc_api::official::VersionManifest;
 ///
@@ -511,7 +405,9 @@ pub struct LatestVersion {
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct VersionManifest {
+    /// Latest release and snapshot information.
     pub latest: LatestVersion,
+    /// List of all available versions.
     pub versions: Vec<Versions>,
 }
 
@@ -557,8 +453,7 @@ impl VersionManifest {
     /// - Other compatible mirrors
     pub fn fetch(mirror: &str) -> anyhow::Result<Self> {
         let url = mirror.to_owned() + "mc/game/version_manifest.json";
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 
     /// Filters and returns a list of version IDs based on the specified type.
@@ -668,26 +563,12 @@ impl VersionManifest {
     }
 }
 
-/// Represents the asset index information from a version JSON.
-///
-/// Contains information about the assets index file that maps asset
-/// hashes to download URLs.
-///
-/// # Fields
-///
-/// * `total_size` - Total size of all assets in bytes
-/// * `id` - The asset index ID (typically matches the Minecraft version)
-/// * `url` - The URL to download the assets index JSON file
-/// * `sha1` - The SHA1 hash of the assets index file for verification
-/// * `size` - The size of the assets index file in bytes
-///
-/// # Asset Index File
+/// Information about the assets index file that maps asset hashes to download URLs.
 ///
 /// The assets index file is typically located at:
 /// `assets/indexes/{id}.json`
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::AssetIndex;
 ///
@@ -709,22 +590,12 @@ pub struct AssetIndex {
     pub size: usize,
 }
 
-/// Represents an individual asset entry in the assets index.
-///
 /// Contains the hash and size of a single asset file.
-///
-/// # Fields
-///
-/// * `hash` - The SHA1 hash of the asset file (used to construct the download URL)
-/// * `size` - The size of the asset file in bytes
-///
-/// # Asset URL Construction
 ///
 /// The download URL is constructed from the hash:
 /// `https://resources.download.minecraft.net/{hash[0:2]}/{hash}`
 ///
 /// # Example
-///
 /// ```
 /// use mc_api::official::Asset;
 ///
@@ -733,7 +604,6 @@ pub struct AssetIndex {
 ///     size: 12345,
 /// };
 ///
-/// // Construct download URL
 /// let url = format!(
 ///     "https://resources.download.minecraft.net/{}/{}",
 ///     &asset.hash[0..2],
@@ -742,66 +612,39 @@ pub struct AssetIndex {
 /// ```
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Asset {
+    /// SHA1 hash of the asset file (used to construct the download URL).
     pub hash: String,
+    /// Size of the asset file in bytes.
     pub size: usize,
 }
 
-/// Represents the assets index JSON file.
-///
-/// This structure contains the complete mapping of asset names to their
-/// hash and size information, retrieved from the Minecraft asset servers.
-///
-/// # File Location
+/// Complete mapping of asset names to their hash and size information.
 ///
 /// This file is typically stored at: `assets/indexes/{id}.json`
 /// where `{id}` is the Minecraft version (e.g., "1.20.4").
 ///
-/// # Fields
-///
-/// * `objects` - A map of asset names to their hash and size information
-///
 /// # Example
-///
 /// ```no_run
 /// use mc_api::official::Assets;
 /// use std::path::PathBuf;
 ///
 /// let assets = Assets::default();
 ///
-/// // Install the assets index file
 /// let path = PathBuf::from("./assets/indexes/1.20.4.json");
 /// assets.install(&path);
 /// ```
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Assets {
+    /// Map of asset names to their hash and size information.
     pub objects: HashMap<String, Asset>,
 }
 
 impl Assets {
-    /// Fetches the assets index from the specified mirror.
-    ///
-    /// This method downloads the assets index JSON file from the Minecraft
-    /// asset servers or a mirror, verifying the SHA1 hash.
-    ///
-    /// # Parameters
-    ///
-    /// * `asset_index` - The `AssetIndex` information containing the URL and hash
-    /// * `mirror` - The base URL of the mirror server for asset downloads
-    ///
-    /// # Returns
-    ///
-    /// Returns a populated `Assets` structure with the asset mappings.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - SHA1 hash verification fails
-    /// - Server returns non-200 status code
+    /// Downloads the assets index JSON file from the Minecraft asset servers or a mirror,
+    /// verifying the SHA1 hash. The downloaded file is verified against the SHA1 hash
+    /// provided in the `AssetIndex` structure to ensure integrity.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version, Assets};
     ///
@@ -810,44 +653,32 @@ impl Assets {
     ///
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
-    ///
-    /// // Fetch the assets index
     /// let assets = Assets::fetch(&version.asset_index, assets_mirror)?;
     ///
     /// println!("Total assets: {}", assets.objects.len());
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     ///
-    /// # SHA1 Verification
-    ///
-    /// The downloaded file is verified against the SHA1 hash provided
-    /// in the `AssetIndex` structure to ensure integrity.
+    /// # Errors
+    /// Returns an error if:
+    /// - Network request fails
+    /// - Invalid JSON response
+    /// - SHA1 hash verification fails
+    /// - Server returns non-200 status code
     pub fn fetch(asset_index: &AssetIndex, mirror: &str) -> anyhow::Result<Self> {
         let url = asset_index.url.replace_domain(mirror);
-        let client = reqwest::blocking::Client::new();
         let sha1 = &asset_index.sha1;
-        let data = fetch!(client, url, sha1, text)?;
-        Ok(serde_json::from_str(&data)?)
+        FetcherBuilder::fetch(&url)
+            .sha1(sha1)
+            .json()
+            .execute()?
+            .json()
     }
 
-    /// Installs the assets index JSON file to the specified path.
-    ///
-    /// This method writes the assets index to a file, creating parent
-    /// directories as needed.
-    ///
-    /// # Parameters
-    ///
-    /// * `file` - The path where the assets index should be saved
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// - Parent directory creation fails
-    /// - File writing fails
-    /// - JSON serialization fails
+    /// Writes the assets index to a file, creating parent directories as needed.
+    /// The file is written as pretty-printed JSON for human readability.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version, Assets};
     /// use std::path::PathBuf;
@@ -859,7 +690,6 @@ impl Assets {
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     /// let assets = Assets::fetch(&version.asset_index, assets_mirror)?;
     ///
-    /// // Install assets index
     /// let asset_path = PathBuf::from("./assets/indexes/1.20.4.json");
     /// assets.install(&asset_path);
     ///
@@ -867,9 +697,11 @@ impl Assets {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     ///
-    /// # File Format
-    ///
-    /// The file is written as pretty-printed JSON for human readability.
+    /// # Panics
+    /// Panics if:
+    /// - Parent directory creation fails
+    /// - File writing fails
+    /// - JSON serialization fails
     pub fn install<P>(&self, file: &P)
     where
         P: AsRef<Path>,
@@ -880,55 +712,23 @@ impl Assets {
     }
 }
 
-/// Represents game and JVM arguments for launching Minecraft.
+/// Game and JVM arguments for launching Minecraft.
 ///
-/// Contains the argument lists that should be passed to the game and JVM
-/// when launching Minecraft.
-///
-/// # Fields
-///
-/// * `game` - Arguments to pass to the Minecraft game process
-/// * `jvm` - Arguments to pass to the Java virtual machine
-///
-/// # Argument Format
-///
-/// Arguments can be either simple strings or complex structures
-/// containing conditional logic based on rules.
+/// Arguments can be either simple strings or complex structures containing
+/// conditional logic based on rules.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Arguments {
+    /// Arguments to pass to the Minecraft game process.
     pub game: Vec<serde_json::Value>,
+    /// Arguments to pass to the Java virtual machine.
     pub jvm: Vec<serde_json::Value>,
 }
 
-/// Represents a complete Minecraft version JSON file.
+/// Complete information needed to launch a specific Minecraft version.
 ///
-/// This structure contains all the information needed to launch a specific
-/// version of Minecraft, including libraries, arguments, assets, and more.
-///
-/// # File Location
-///
-/// Version JSON files are typically located at:
-/// `versions/{version}/{version}.json`
-///
-/// # Fields
-///
-/// * `arguments` - Game and JVM launch arguments
-/// * `asset_index` - Information about the assets index
-/// * `assets` - The type of assets ("legacy" or "standard")
-/// * `compliance_level` - The compliance level of the version
-/// * `downloads` - Download information for client, server, etc.
-/// * `id` - The version identifier
-/// * `java_version` - Information about the required Java version
-/// * `libraries` - List of required library dependencies
-/// * `logging` - Logging configuration
-/// * `main_class` - The main class to launch
-/// * `minimum_launcher_version` - Minimum launcher version required
-/// * `release_time` - When this version was originally released
-/// * `time` - When this version was last updated
-/// * `r#type` - The type of version ("release" or "snapshot")
+/// Version JSON files are typically located at: `versions/{version}/{version}.json`
 ///
 /// # Example
-///
 /// ```no_run
 /// use mc_api::official::{VersionManifest, Version};
 ///
@@ -944,50 +744,50 @@ pub struct Arguments {
 /// ```
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Version {
+    /// Game and JVM launch arguments.
     pub arguments: Arguments,
+    /// Information about the assets index.
     #[serde(rename = "assetIndex")]
     pub asset_index: AssetIndex,
+    /// The type of assets ("legacy" or "standard").
     pub assets: String,
+    /// The compliance level of the version.
     #[serde(rename = "complianceLevel")]
     pub compliance_level: usize,
+    /// Download information for client, server, etc.
     pub downloads: serde_json::Value,
+    /// The version identifier.
     pub id: String,
+    /// Information about the required Java version.
     #[serde(rename = "javaVersion")]
     pub java_version: serde_json::Value,
+    /// List of required library dependencies.
     pub libraries: Libraries,
+    /// Logging configuration.
     pub logging: serde_json::Value,
+    /// The main class to launch.
     #[serde(rename = "mainClass")]
     pub main_class: String,
+    /// Minimum launcher version required.
     #[serde(rename = "minimumLauncherVersion")]
     pub minimum_launcher_version: usize,
+    /// When this version was originally released.
     #[serde(rename = "releaseTime")]
     pub release_time: String,
+    /// When this version was last updated.
     pub time: String,
+    /// The type of version ("release" or "snapshot").
     pub r#type: String,
 }
 
 /// Trait for merging mod loader profiles with official Minecraft versions.
-///
-/// This trait provides a standardized interface for integrating mod loader
-/// configurations (like Fabric, Forge, etc.) with official Minecraft version
-/// JSON files.
-///
-/// # Purpose
 ///
 /// Mod loaders like Fabric provide their own versions of version JSON files that
 /// extend the official Minecraft version with additional libraries, arguments,
 /// and configuration changes. This trait allows these profiles to be merged
 /// with official versions.
 ///
-/// # Required Methods
-///
-/// * `official_libraries()` - Returns mod loader-specific libraries
-/// * `main_class()` - Returns the mod loader's main class
-/// * `arguments_game()` - Returns game arguments to merge
-/// * `arguments_jvm()` - Returns JVM arguments to merge
-///
 /// # Example Implementation
-///
 /// ```
 /// use mc_api::official::MergeVersion;
 ///
@@ -997,7 +797,7 @@ pub struct Version {
 ///
 /// impl MergeVersion for CustomModProfile {
 ///     fn official_libraries(&self) -> Option<Vec<mc_api::official::Library>> {
-///         Some(vec![]) // Return custom libraries
+///         Some(vec![])
 ///     }
 ///
 ///     fn main_class(&self) -> Option<String> {
@@ -1005,112 +805,59 @@ pub struct Version {
 ///     }
 ///
 ///     fn arguments_game(&self) -> Option<Vec<serde_json::Value>> {
-///         None // No additional game arguments
+///         None
 ///     }
 ///
 ///     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>> {
-///         Some(vec![]) // Additional JVM arguments
+///         Some(vec![])
 ///     }
 /// }
 /// ```
 ///
 /// # Usage
-///
 /// ```no_run
 /// use mc_api::official::{VersionManifest, Version, MergeVersion};
 /// use mc_api::fabric::Profile;
 ///
 /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
 /// let fabric_mirror = "https://bmclapi2.bangbang93.com/fabric-meta/";
+///
 /// let manifest = VersionManifest::fetch(manifest_mirror)?;
 /// let mut version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
 /// let mod_profile = Profile::fetch(fabric_mirror,"1.20.4","0.15.10")?;
 ///
-/// // Merge mod profile into official version
 /// version.merge(&mod_profile);
-///
-/// // The version now includes mod loader libraries and arguments
 /// # Ok::<(), anyhow::Error>(())
 /// ```
+///
+/// Common mod loaders: Fabric, Forge, Quilt
 pub trait MergeVersion {
-    /// Returns mod loader-specific libraries compatible with the official format.
-    ///
-    /// This method should return the libraries that the mod loader requires,
-    /// converted to the official library format.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(Vec<Library>)` with mod loader libraries, or `None` if
-    /// there are no additional libraries.
+    /// Returns the libraries that the mod loader requires, converted to the official library format.
+    /// Returns `Some(Vec<Library>)` with mod loader libraries, or `None` if there are no additional libraries.
     fn official_libraries(&self) -> Option<Vec<Library>>;
 
-    /// Returns the mod loader's main class.
-    ///
-    /// This method should return the main class that should be used instead
-    /// of the official Minecraft main class.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(String)` with the main class name, or `None` to use
-    /// the official main class.
+    /// Returns the main class that should be used instead of the official Minecraft main class.
+    /// Returns `Some(String)` with the main class name, or `None` to use the official main class.
     fn main_class(&self) -> Option<String>;
 
-    /// Returns game arguments to merge with the official version.
-    ///
-    /// This method should return any additional game arguments that the
-    /// mod loader requires.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(Vec<Value>)` with additional game arguments, or `None`
-    /// if there are no additional arguments.
+    /// Returns any additional game arguments that the mod loader requires.
+    /// Returns `Some(Vec<Value>)` with additional game arguments, or `None` if there are no additional arguments.
     fn arguments_game(&self) -> Option<Vec<serde_json::Value>>;
 
-    /// Returns JVM arguments to merge with the official version.
-    ///
-    /// This method should return any additional JVM arguments that the
-    /// mod loader requires.
-    ///
-    /// # Returns
-    ///
-    /// Returns `Some(Vec<Value>)` with additional JVM arguments, or `None`
-    /// if there are no additional arguments.
+    /// Returns any additional JVM arguments that the mod loader requires.
+    /// Returns `Some(Vec<Value>)` with additional JVM arguments, or `None` if there are no additional arguments.
     fn arguments_jvm(&self) -> Option<Vec<serde_json::Value>>;
 }
 
 impl Version {
-    /// Fetches a Minecraft version JSON from the version manifest.
-    ///
-    /// This method retrieves the detailed version information for a specific
-    /// Minecraft version from the specified mirror.
-    ///
-    /// # Parameters
-    ///
-    /// * `manifest` - The version manifest containing version URLs
-    /// * `version` - The version ID to fetch (e.g., \"1.20.4\", \"23w14a\")
-    /// * `mirror` - The base URL of the mirror server for version downloads
-    ///
-    /// # Returns
-    ///
-    /// Returns a populated `Version` structure with all version information.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - Network request fails
-    /// - Invalid JSON response
-    /// - Server returns non-200 status code
-    /// - Version not found in manifest
+    /// Retrieves the detailed version information for a specific Minecraft version from the specified mirror.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version};
     ///
     /// let manifest_mirror = "https://bmclapi2.bangbang93.com/";
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
-    ///
-    /// // Fetch version 1.20.4
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
     /// println!("Version: {}", version.id);
@@ -1120,30 +867,22 @@ impl Version {
     /// println!("Java version: {}", version.java_version);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Network request fails
+    /// - Invalid JSON response
+    /// - Server returns non-200 status code
+    /// - Version not found in manifest
     pub fn fetch(manifest: &VersionManifest, version: &str, mirror: &str) -> anyhow::Result<Self> {
         let url = manifest.url(version).replace_domain(mirror);
-        let client = reqwest::blocking::Client::new();
-        fetch!(client, url, json)
+        FetcherBuilder::fetch(&url).json().execute()?.json()
     }
 
-    /// Installs the version JSON file to the specified path.
-    ///
-    /// This method writes the version information to a file, creating parent
-    /// directories as needed.
-    ///
-    /// # Parameters
-    ///
-    /// * `file` - The path where the version JSON should be saved
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// - Parent directory creation fails
-    /// - File writing fails
-    /// - JSON serialization fails
+    /// Writes the version information to a file, creating parent directories as needed.
+    /// The file is written as pretty-printed JSON for human readability.
     ///
     /// # Example
-    ///
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version};
     /// use std::path::PathBuf;
@@ -1152,7 +891,6 @@ impl Version {
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
     /// let version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
     ///
-    /// // Install version JSON
     /// let version_path = PathBuf::from("./versions/1.20.4/1.20.4.json");
     /// version.install(&version_path);
     ///
@@ -1160,9 +898,11 @@ impl Version {
     /// # Ok::<(), anyhow::Error>(())
     /// ```
     ///
-    /// # File Format
-    ///
-    /// The file is written as pretty-printed JSON for human readability.
+    /// # Panics
+    /// Panics if:
+    /// - Parent directory creation fails
+    /// - File writing fails
+    /// - JSON serialization fails
     pub fn install<P>(&self, file: &P)
     where
         P: AsRef<Path>,
@@ -1172,17 +912,7 @@ impl Version {
         fs::write(file, text).unwrap();
     }
 
-    /// Merges a mod loader profile into this version.
-    ///
-    /// This method combines the official version information with a mod loader's
-    /// profile, adding mod loader libraries, replacing the main class, and merging
-    /// arguments as needed.
-    ///
-    /// # Parameters
-    ///
-    /// * `other` - A type implementing `MergeVersion` (e.g., Fabric profile)
-    ///
-    /// # Behavior
+    /// Combines the official version information with a mod loader's profile.
     ///
     /// The merge operation:
     /// - Appends mod loader libraries to the existing library list
@@ -1190,8 +920,9 @@ impl Version {
     /// - Appends mod loader game arguments to existing game arguments
     /// - Appends mod loader JVM arguments to existing JVM arguments
     ///
-    /// # Example
+    /// Common mod loaders: Fabric, Forge, Quilt
     ///
+    /// # Example
     /// ```no_run
     /// use mc_api::official::{VersionManifest, Version, MergeVersion};
     /// use mc_api::fabric::Profile;
@@ -1201,25 +932,14 @@ impl Version {
     ///
     /// let manifest = VersionManifest::fetch(manifest_mirror)?;
     /// let mut version = Version::fetch(&manifest, "1.20.4", manifest_mirror)?;
-    ///
-    /// // Fetch Fabric profile
     /// let profile = Profile::fetch(fabric_mirror, "1.20.4", "0.15.10")?;
     ///
-    /// // Merge Fabric profile into version
     /// version.merge(&profile);
     ///
-    /// // Version now includes Fabric libraries and arguments
     /// println!("Total libraries: {}", version.libraries.len());
     /// println!("Main class: {}", version.main_class);
     /// # Ok::<(), anyhow::Error>(())
     /// ```
-    ///
-    /// # Common Mod Loaders
-    ///
-    /// This trait is commonly used with:
-    /// - Fabric: `mc_api::fabric::Profile`
-    /// - Forge: Similar profiles (not yet implemented)
-    /// - Quilt: Similar profiles (not yet implemented)
     pub fn merge<T>(&mut self, other: &T)
     where
         T: MergeVersion,

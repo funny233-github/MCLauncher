@@ -1,28 +1,28 @@
-# MCLauncher
+# Gluon
 
-A modern, efficient Minecraft launcher written in Rust. This tool provides a command-line interface to launch and manage different versions of Minecraft with support for mod installation, Microsoft OAuth authentication, and more.
+A modern, efficient Minecraft gluon written in Rust. This tool provides a command-line interface to launch and manage different versions of Minecraft with support for mod installation, Microsoft OAuth authentication, and more.
 
 ## Version
 
-Current version: **0.4.1**
+Current version: **0.6.1**
 
 ## Introduction
 
-Welcome to MCLauncher! This tool is designed to make it easy to launch and manage different versions of Minecraft. With just a few commands, you can create and manage Minecraft directories, set up configurations, download and install different versions of Minecraft, authenticate with Microsoft accounts, and install additional mods from Modrinth.
+Welcome to Gluon! This tool is designed to make it easy to launch and manage different versions of Minecraft. With just a few commands, you can create and manage Minecraft directories, set up configurations, download and install different versions of Minecraft, authenticate with Microsoft accounts, and install additional mods from Modrinth.
 
 ## Key Features
 
 - **Microsoft OAuth Authentication**: Securely authenticate with your Microsoft account for official Minecraft servers
-- **Offline Mode**: Play with offline accounts when internet is not available
 - **Mod Management**: Seamless integration with Modrinth for installing and managing mods
 - **Multiple Minecraft Versions**: Support for various Minecraft versions and loaders
 - **Fabric Loader Support**: Easy installation of Fabric mods with different loader versions
-- **Download Mirrors**: Choose from multiple download mirrors for faster downloads
+- **NeoForge Loader Support**: Easy installation of NeoForge mods with different loader versions
+- **Download Mirrors**: Choose from multiple download mirrors (Official / BMCLAPI) for faster downloads
 - **Cross-platform**: Written in Rust for excellent performance on all platforms
 
 ## Getting Started
 
-To get started with MCLauncher, follow these steps:
+To get started with Gluon, follow these steps:
 
 ### Installation
 
@@ -30,36 +30,36 @@ To get started with MCLauncher, follow these steps:
 
 ```bash
 git clone <repository-url>
-cd MCLauncher
+cd Gluon
 cargo install --path .
 ```
 
 **Using cargo:**
 
 ```bash
-cargo install launcher
+cargo install gluon
 ```
 
 ### Basic Setup
 
-1. **Create a New Directory**: Initialize a new directory to store Minecraft files using the `launcher init` command.
-2. **Set Up Configurations**: Run `launcher config` within the directory to set up configurations.
+1. **Create a New Directory**: Initialize a new directory to store Minecraft files using the `gluon init` command.
+2. **Set Up Configurations**: Run `gluon config` within the directory to set up configurations.
 3. **Authenticate with Your Account**:
-   - For Microsoft accounts: `launcher account microsoft`
-   - For offline accounts: `launcher account offline <username>`
-4. **Explore Available Versions**: Explore available versions using `launcher list <version_type>`.
-5. **Select a Mirror**: Specify a download mirror via `launcher mirror <mirror>`.
-6. **Install Minecraft**: Install a specific version of Minecraft using the `launcher install <version>` command.
-7. **Install with Fabric Loader**: Install Minecraft along with the Fabric Loader using the `launcher install <version> --fabric <fabric_loader_version>` command.
-8. **Run Minecraft**: Launch the game with `launcher run`
-9. **Access Help**: For more commands and details, type `launcher help`.
+   - For Microsoft accounts: `gluon account microsoft`
+4. **Explore Available Versions**: Explore available versions using `gluon list <version_type>`.
+5. **Select a Mirror**: Specify a download mirror via `gluon mirror <mirror>`.
+6. **Install Minecraft**: Install a specific version of Minecraft using the `gluon install <version>` command.
+7. **Install with Fabric Loader**: Install Minecraft along with the Fabric Loader using the `gluon install <version> --fabric <fabric_loader_version>` command.
+8. **Install with NeoForge Loader**: Install Minecraft along with the NeoForge Loader using the `gluon install <version> --neoforge <neoforge_version>` command.
+9. **Run Minecraft**: Launch the game with `gluon run`
+10. **Access Help**: For more commands and details, type `gluon help`.
 
 ### Microsoft OAuth Authentication
 
-MCLauncher now supports full Microsoft OAuth authentication for playing on official Minecraft servers:
+Gluon now supports full Microsoft OAuth authentication for playing on official Minecraft servers:
 
 ```bash
-launcher account microsoft
+gluon account microsoft
 ```
 
 This will:
@@ -75,57 +75,55 @@ All authentication tokens are securely stored in your local configuration file.
 
 ## Mod Management
 
-MCLauncher provides comprehensive mod management capabilities through Modrinth integration:
+Gluon provides comprehensive mod management capabilities through Modrinth integration:
 
 ### Prerequisites
 
 Ensure you have installed Fabric via:
 
 ```bash
-launcher install <minecraft_version> --fabric <fabric_loader_version>
+gluon install <minecraft_version> --fabric <fabric_loader_version>
 ```
 
 ### Mod Management Commands
 
 1. **Find a Mod**: Search for mods on Modrinth, the Mod name is always at the end of the URL (e.g., `https://modrinth.com/mod/fabric-api` → `fabric-api`)
-2. **Add a Mod**: `launcher mod add <mod_name>`
-3. **Remove a Mod**: `launcher mod remove <mod_name>`
-4. **Update All Mods**: Update all mods listed in `config.toml` with `launcher mod update`
-5. **Sync All Mods**: Sync all mods from `config.toml` with `launcher mod sync`
-6. **Install All Mods**: Install all mods from `config.lock` with `launcher mod install`
-7. **Clean Unused Mods**: Remove all mods not in `config.toml` with `launcher mod clean`
-8. **Search for Mods**: Search for related mods with `launcher mod search <name>`
+2. **Add a Mod**: `gluon mod add <mod_name>`
+3. **Remove a Mod**: `gluon mod remove <mod_name>`
+4. **Update All Mods**: Update all mods listed in `config.toml` with `gluon mod update`
+5. **Sync All Mods**: Sync all mods from `config.toml` with `gluon mod sync`
+6. **Install All Mods**: Install all mods from `config.lock` with `gluon mod install`
+7. **Clean Unused Mods**: Remove all mods not in `config.toml` with `gluon mod clean`
+8. **Search for Mods**: Search for related mods with `gluon mod search <name>`
 
 ### Example Workflow
 
 ```bash
 # Install Minecraft with Fabric
-launcher install 1.20.4 --fabric 0.15.11
+gluon install 1.20.4 --fabric 0.15.11
 
 # Search for a mod
-launcher mod search sodium
+gluon mod search sodium
 
 # Add mods
-launcher mod add fabric-api
-launcher mod add sodium
-launcher mod add lithium
+gluon mod add fabric-api
+gluon mod add sodium
+gluon mod add lithium
 
 # Install all mods
-launcher mod install
+gluon mod install
 
 # Run the game
-launcher run
+gluon run
 ```
 
 ## Building from Source
 
-To build MCLauncher from source, you'll need to have Rust's package manager, Cargo, installed.
+To build Gluon from source, you'll need to have Rust's package manager, Cargo, installed.
 
 ### Azure Client ID
 
 The `AZURE_CLIENT_ID` environment variable is required for Microsoft OAuth authentication.
-
-**For development**: You can skip this by using offline mode accounts (`launcher account offline <username>`).
 
 **For production**: Register an application in [Azure Portal](https://portal.azure.com/) and set the `AZURE_CLIENT_ID` environment variable during compilation:
 
@@ -144,7 +142,7 @@ cargo build --release
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd MCLauncher
+cd Gluon
 
 # Build and install locally
 AZURE_CLIENT_ID=<CLIENT_ID> cargo install --path .
@@ -153,7 +151,7 @@ AZURE_CLIENT_ID=<CLIENT_ID> cargo install --path .
 AZURE_CLIENT_ID=<CLIENT_ID> cargo build --release
 ```
 
-The resulting binary will be located at `target/release/launcher`
+The resulting binary will be located at `target/release/gluon`
 
 ### Development
 
@@ -167,21 +165,22 @@ AZURE_CLIENT_ID=<CLIENT_ID> RUST_LOG=debug cargo run -- <command>
 
 ## Features
 
-- **Authentication**: Support for Microsoft OAuth and offline accounts
+- **Authentication**: Support for Microsoft OAuth accounts
 - **Version Management**: Create and manage Minecraft directories with ease
 - **Configuration**: Set up configurations and update your Minecraft settings
 - **Version Exploration**: Explore available versions of Minecraft and download them
-- **Fabric Loader**: Install Fabric Loader using the launcher
+- **Fabric Loader**: Install Fabric Loader using the gluon
+- **NeoForge Loader**: Install NeoForge Loader using the gluon
 - **Mod Integration**: Seamless Modrinth integration for mod management
 - **Help System**: Access help and assistance commands for more information
 - **Cross-platform**: Written in Rust with excellent performance on all platforms
-- **Mirrors**: Support for multiple download mirrors for faster downloads
+- **Mirrors**: Support for multiple download mirrors (Official / BMCLAPI) for faster downloads
 
 ## Architecture
 
-MCLauncher is organized as a Rust workspace with the following components:
+Gluon is organized as a Rust workspace with the following components:
 
-- **launcher**: Main CLI application
+- **gluon**: Main CLI application
 - **mc-api**: Official Minecraft API bindings
 - **mc-oauth**: Microsoft OAuth authentication library
 - **modrinth-api**: Modrinth API integration for mod management
@@ -192,11 +191,10 @@ MCLauncher is organized as a Rust workspace with the following components:
 - Microsoft OAuth authentication requires an internet connection
 - Some features may not work with all Minecraft versions
 - This tool is still in development and may not be suitable for all use cases
-- Offline accounts cannot connect to official Minecraft servers
 
 ## Contributing
 
-We would love to have your help contributing to MCLauncher! Please report any issues or suggestions on our GitHub repository.
+We would love to have your help contributing to Gluon! Please report any issues or suggestions on our GitHub repository.
 
 ### Development Guidelines
 
