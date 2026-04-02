@@ -104,7 +104,9 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Byte(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("Expected Byte variant, found non-Byte result"))?
+            Err(anyhow::anyhow!(
+                "Expected Byte variant, found non-Byte result"
+            ))?
         }
     }
     /// Extracts the raw text from the result.
@@ -116,7 +118,9 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Text(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("Expected Text variant, found non-Text result"))?
+            Err(anyhow::anyhow!(
+                "Expected Text variant, found non-Text result"
+            ))?
         }
     }
 
@@ -129,7 +133,9 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Json(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("Expected Json variant, found non-Json result"))?
+            Err(anyhow::anyhow!(
+                "Expected Json variant, found non-Json result"
+            ))?
         }
     }
 
@@ -142,7 +148,9 @@ impl<T: serde::de::DeserializeOwned> FetcherResult<T> {
         if let FetcherResult::Xml(res) = self {
             Ok(res)
         } else {
-            Err(anyhow::anyhow!("Expected Xml variant, found non-Xml result"))?
+            Err(anyhow::anyhow!(
+                "Expected Xml variant, found non-Xml result"
+            ))?
         }
     }
 }
