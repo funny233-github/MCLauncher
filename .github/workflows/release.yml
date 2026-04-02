@@ -37,7 +37,7 @@ jobs:
           args: --release
 
       - name: Rename (linux)
-        if: ${{ contains(matrix.os, 'linux') }}
+        if: ${{ contains(matrix.os, 'ubuntu') }}
         run: mv target/release/gluon target/release/gluon-${{ matrix.plat }}_amd64
 
       - name: Rename (windows)

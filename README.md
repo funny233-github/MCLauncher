@@ -4,7 +4,7 @@ A modern, efficient Minecraft gluon written in Rust. This tool provides a comman
 
 ## Version
 
-Current version: **0.6.1**
+Current version: **0.6.6**
 
 ## Introduction
 
