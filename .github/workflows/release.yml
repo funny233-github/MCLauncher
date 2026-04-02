@@ -36,11 +36,15 @@ jobs:
           command: build
           args: --release
 
-      - name: Rename (amd64)
-        if: ${{ !contains(matrix.os, 'macos') }}
+      - name: Rename (linux)
+        if: ${{ contains(matrix.os, 'linux') }}
         run: mv target/release/gluon target/release/gluon-${{ matrix.plat }}_amd64
 
-      - name: Rename (arm64)
+      - name: Rename (windows)
+        if: ${{ contains(matrix.os, 'windows') }}
+        run: mv target/release/gluon.exe target/release/gluon-${{ matrix.plat }}_amd64.exe
+
+      - name: Rename (macos)
         if: contains(matrix.os, 'macos')
         run: mv target/release/gluon target/release/gluon-${{ matrix.plat }}_arm64
 
