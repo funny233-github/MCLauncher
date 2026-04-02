@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
     permissions:
       contents: write
-    runs-on: ${{ matrix.rs }}-latest
+    runs-on: ${{ matrix.os }}-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
