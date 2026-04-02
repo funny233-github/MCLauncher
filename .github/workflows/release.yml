@@ -36,16 +36,16 @@ jobs:
           command: build
           args: --release
 
-      - name: Release (amd64)
+      - name: Rename (amd64)
         if: ${{ !contains(matrix.os, 'macos') }}
+        run: mv target/release/gluon target/release/gluon-${{ matrix.plat }}_amd64
+
+      - name: Rename (arm64)
+        if: contains(matrix.os, 'macos')
+        run: mv target/release/gluon target/release/gluon-${{ matrix.plat }}_arm64
+
+      - name: Release
         uses: softprops/action-gh-release@v2
         with:
           name: gluon-${{ matrix.plat }}_amd64
-          files: target/release/gluon*
-
-      - name: Release (arm64)
-        if: contains(matrix.os, 'macos')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: gluon-${{ matrix.plat }}_arm64
-          files: target/release/gluon*
+          files: target/release/gluon-*
