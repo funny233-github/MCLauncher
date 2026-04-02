@@ -383,15 +383,63 @@ fn progress_bar(len: usize) -> Result<ProgressBar> {
 /// Contains the context needed to fetch and update a specific mod, including shared
 /// references to the configuration handler, progress bar, and runtime configuration.
 struct SyncUpdateHandle {
+    /// Name of the mod being processed.
     name: String,
+    /// Configuration for the mod including version preferences.
     conf: ModConfig,
+    /// Whether this is a sync operation (true) or update operation (false).
     sync: bool,
+    /// Shared reference to the runtime configuration.
     origin_config_share: Arc<RuntimeConfig>,
+    /// Shared reference to the configuration handler with read/write lock.
     handle_share: Arc<RwLock<ConfigHandler>>,
+    /// Shared progress bar for tracking operation progress.
     bar_share: ProgressBar,
 }
 
 impl SyncUpdateHandle {
+    /// Renames a disabled mod file back to its original name.
+    ///
+    /// Removes the `.unuse` suffix from the mod file if it exists, enabling the mod
+    /// for use in the game. The function checks both locked and regular configurations
+    /// to determine the correct original filename.
+    ///
+    /// # Errors
+    /// - `anyhow::Error` if filesystem rename operation fails
+    fn rename_unuse_mod(&self) -> Result<()> {
+        let handle = &self.handle_share.read().unwrap();
+        let locked_config_mods = handle.locked_config().mods.as_ref();
+        let config_mods = handle.config().mods.as_ref();
+        let file_name;
+        if let Some(locked_config_mods) = locked_config_mods {
+            file_name = locked_config_mods
+                .get(&self.name)
+                .unwrap()
+                .file_name
+                .clone();
+        } else if let Some(config_mods) = config_mods {
+            if let Some(name) = config_mods
+                .get(&self.name)
+                .cloned()
+                .and_then(|x| x.file_name)
+            {
+                file_name = name;
+            } else {
+                return Ok(());
+            }
+        } else {
+            return Ok(());
+        }
+        let unuse_file_name = format!("{file_name}.unuse");
+        let game_dir = &handle.config().game_dir;
+        let file_path = Path::new(game_dir).join("mods").join(&unuse_file_name);
+        let target_file_path = Path::new(&game_dir).join("mods").join(file_name);
+        if fs::exists(&file_path).is_ok_and(|x| x) {
+            fs::rename(&file_path, target_file_path)?;
+        }
+        Ok(())
+    }
+
     /// Checks if the mod is already at the correct version in config.lock.
     ///
     /// Used to avoid unnecessary re-downloads during sync operations.
@@ -468,6 +516,7 @@ impl SyncUpdateHandle {
     /// - `anyhow::Error` if no compatible versions are found
     /// - `anyhow::Error` if configuration cannot be updated
     async fn execute(self) -> Result<()> {
+        self.rename_unuse_mod()?;
         if self.sync && self.is_mod_synced() {
             self.update_bar();
             return Ok(());
@@ -539,6 +588,9 @@ async fn sync_or_update(sync: bool) -> Result<()> {
 /// config.lock. Ensures that config.lock only contains mods that are actually
 /// configured by the user in config.toml, preventing stale mod entries from
 /// accumulating.
+///
+/// # Errors
+/// - `anyhow::Error` if configuration cannot be read or written
 fn clean_locked_config_mods() -> Result<()> {
     let origin_handle = ConfigHandler::read()?;
     let mut handle = origin_handle.clone();
@@ -570,6 +622,10 @@ fn clean_locked_config_mods() -> Result<()> {
 /// Scans the mods directory for files with `.unuse` extension (which are marked
 /// as unused) and deletes them. Performs case-sensitive file extension comparisons
 /// for cross-platform compatibility.
+///
+/// # Errors
+/// - `anyhow::Error` if configuration cannot be read
+/// - `anyhow::Error` if file system operations fail
 #[allow(
     clippy::case_sensitive_file_extension_comparisons,
     reason = "case sensitive is needed for cross-platform compatibility"
@@ -628,9 +684,12 @@ pub fn clean() -> Result<()> {
 }
 
 /// Structure for displaying mod search results in a table.
+/// Information about a mod search result for display in tables.
 #[derive(Debug, Tabled)]
 struct HitsInfo {
+    /// Unique identifier (slug) of the mod on Modrinth.
     slug: String,
+    /// Short description of the mod.
     description: String,
 }
 
