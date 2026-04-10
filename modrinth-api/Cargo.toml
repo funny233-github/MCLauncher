@@ -1,13 +1,13 @@
 [package]
 name = "modrinth-api"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
-anyhow = "1.0.86"
+anyhow = "1.0.102"
 reqwest = { version = "0.13.2", features = ["blocking", "json"] }
-serde = { version = "1.0.202", features = ["derive"] }
-tokio = { version = "1.38.0", features = ["full"] }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.51.1", features = ["full"] }
 
 [lints.clippy]
 pedantic = "deny"
