@@ -726,6 +726,13 @@ impl ConfigHandler {
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
+    /// Searches upward for config.toml starting from the current directory.
+    ///
+    /// Returns the directory containing config.toml, or an error if the
+    /// filesystem root is reached without finding it.
+    ///
+    /// # Errors
+    /// Returns an error if config.toml is not found before reaching the filesystem root.
     fn find_config_root() -> Result<std::path::PathBuf> {
         let mut current = std::env::current_dir()?;
         loop {
@@ -1141,10 +1148,22 @@ impl ConfigHandler {
         Ok(())
     }
 
-    /// TODO:
-    /// Complete docs
+    /// Gets the absolute path to the game directory.
+    ///
+    /// This method resolves `game_dir` to an absolute path for internal use.
+    /// If `game_dir` in `config.toml` is already an absolute path, it is returned as-is.
+    /// If `game_dir` is a relative path, it is resolved relative to the directory
+    /// containing `config.toml`.
+    ///
+    /// This ensures that file operations always work correctly regardless of the
+    /// current working directory when the program is run.
+    ///
+    /// # Returns
+    /// An absolute path string to the game directory.
     ///
     /// # Errors
+    /// - Returns an error if the parent directory of `config.toml` cannot be determined
+    /// - Returns an error if the resolved path cannot be converted to a valid string
     pub fn get_absolute_game_dir(&self) -> Result<String> {
         let config_path = Path::new(&self.paths.config)
             .parent()
