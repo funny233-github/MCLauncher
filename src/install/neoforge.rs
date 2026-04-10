@@ -1,6 +1,7 @@
 use super::install_dependencies;
 use super::mavencoord::MavenCoord;
 use super::mc_installer::MCInstaller;
+use crate::config::ConfigHandler;
 use crate::config::MCLoader;
 use crate::config::RuntimeConfig;
 use anyhow::Result;
@@ -28,15 +29,17 @@ use std::process::{Command, Stdio};
 pub(super) struct NeoforgeInstaller;
 
 impl MCInstaller for NeoforgeInstaller {
-    fn install(config: &RuntimeConfig) -> Result<()> {
-        let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
+    fn install(config: &ConfigHandler) -> Result<()> {
+        let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
             return Err(anyhow::anyhow!("the loader is not neoforge"));
         };
         println!("fetch neoforge installer.jar");
         let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
         if !tmp_dir.exists() {
-            let neoforge_jar =
-                neoforge::Installer::fetch(&config.mirror.neoforge_neoforge, &neoforge_version)?;
+            let neoforge_jar = neoforge::Installer::fetch(
+                &config.config().mirror.neoforge_neoforge,
+                &neoforge_version,
+            )?;
 
             println!("extract neoforge installer.jar");
             neoforge_jar.extract(tmp_dir.to_str().unwrap())?;
@@ -45,18 +48,19 @@ impl MCInstaller for NeoforgeInstaller {
                 neoforge_jar.installer.clone(),
             )?;
         }
+        let game_dir = config.get_absolute_game_dir()?;
 
-        let version_json_file_path = Path::new(&config.game_dir)
+        let version_json_file_path = Path::new(&game_dir)
             .join("versions")
-            .join(&config.game_version)
-            .join(config.game_version.clone() + ".json");
+            .join(&config.config().game_version)
+            .join(config.config().game_version.clone() + ".json");
 
         if !version_json_file_path.exists() {
-            let version = fetch_version(config)?;
+            let version = fetch_version(config.config())?;
             version.install(&version_json_file_path);
         }
 
-        let native_dir = Path::new(&config.game_dir).join("natives");
+        let native_dir = Path::new(&game_dir).join("natives");
         fs::create_dir_all(native_dir).unwrap_or(());
 
         let mut version_json_file = File::open(version_json_file_path)?;
@@ -114,8 +118,8 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
 /// # Errors
 /// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
 /// - `anyhow::Error` if the installer profile cannot be read or parsed
-fn install_installer_dependencies(config: &RuntimeConfig) -> Result<()> {
-    let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
+fn install_installer_dependencies(config: &ConfigHandler) -> Result<()> {
+    let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
     let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
@@ -125,10 +129,11 @@ fn install_installer_dependencies(config: &RuntimeConfig) -> Result<()> {
 
     println!("fetching neoforge installer dependencies...");
 
-    let tasks: VecDeque<InstallTask> = libraries_installtask(
-        &format!("{}libraries/", config.game_dir),
-        &installer_profile,
-    );
+    let libraries_path = std::path::Path::new(&config.get_absolute_game_dir()?)
+        .join("libraries")
+        .display()
+        .to_string();
+    let tasks: VecDeque<InstallTask> = libraries_installtask(&libraries_path, &installer_profile);
     TaskPool::from(tasks).install();
     Ok(())
 }
@@ -169,9 +174,9 @@ fn libraries_installtask(path: &str, profile: &InstallerProfile) -> VecDeque<Ins
 /// - `anyhow::Error` if the installer profile cannot be read or parsed
 /// - `anyhow::Error` if Maven coordinate paths cannot be resolved
 /// - `anyhow::Error` if absolute path conversion fails
-fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
+fn get_variables(config: &ConfigHandler) -> Result<HashMap<String, String>> {
     println!("format variables");
-    let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
+    let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
     let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
@@ -182,16 +187,24 @@ fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
     let mut variables: HashMap<String, String> = HashMap::new();
     variables.insert("{SIDE}".into(), "client".into());
 
-    let version_dir = format!("{}-neoforge-{}", config.vanilla, neoforge_version);
-    let filename = format!("{}-neoforge-{}.jar", config.vanilla, neoforge_version);
-    let path = Path::new(&config.game_dir)
+    let version_dir = format!("{}-neoforge-{}", config.config().vanilla, neoforge_version);
+    let filename = format!(
+        "{}-neoforge-{}.jar",
+        config.config().vanilla,
+        neoforge_version
+    );
+    let game_dir = config.get_absolute_game_dir()?;
+    let path = Path::new(&game_dir)
         .join("versions")
         .join(version_dir)
         .join(&filename);
     let path = std::path::absolute(&path)?;
     variables.insert("{MINECRAFT_JAR}".into(), path.to_str().unwrap().to_string());
 
-    variables.insert("{MINECRAFT_VERSION}".into(), config.vanilla.clone());
+    variables.insert(
+        "{MINECRAFT_VERSION}".into(),
+        config.config().vanilla.clone(),
+    );
     variables.insert(
         "{INSTALLER}".into(),
         tmp_dir.join("installer.jar").to_str().unwrap().to_string(),
@@ -204,9 +217,7 @@ fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
             [b'[', .., b']'] => {
                 let coord = &v.client[1..v.client.len() - 1];
                 let coord_path = MavenCoord::parse(coord).to_path_string();
-                let path = Path::new(&config.game_dir)
-                    .join("libraries")
-                    .join(coord_path);
+                let path = Path::new(&game_dir).join("libraries").join(coord_path);
                 let path = std::path::absolute(path)?;
                 path.to_str().unwrap().to_string()
             }
@@ -241,9 +252,9 @@ fn get_variables(config: &RuntimeConfig) -> Result<HashMap<String, String>> {
 /// - `anyhow::Error` if variable substitution fails
 /// - `anyhow::Error` if a processor process cannot be spawned or fails
 /// - `anyhow::Error` if Maven coordinate paths cannot be resolved
-fn process_processors(config: &RuntimeConfig) -> Result<()> {
+fn process_processors(config: &ConfigHandler) -> Result<()> {
     println!("process processors");
-    let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
+    let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
     let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
@@ -252,6 +263,7 @@ fn process_processors(config: &RuntimeConfig) -> Result<()> {
         serde_json::from_str(&fs::read_to_string(install_profile)?)?;
 
     let variables = get_variables(config)?;
+    let game_dir = config.get_absolute_game_dir()?;
 
     for process in install_profile.processors {
         if match process.sides {
@@ -270,7 +282,7 @@ fn process_processors(config: &RuntimeConfig) -> Result<()> {
                 }
                 if let [b'[', .., b']'] = value.as_bytes() {
                     let path = MavenCoord::parse(&value[1..value.len() - 1]).to_path_string();
-                    let path = Path::new(&config.game_dir).join("libraries").join(path);
+                    let path = Path::new(&game_dir).join("libraries").join(path);
                     value = std::path::absolute(path)?.to_str().unwrap().to_string();
                 }
             }
@@ -281,12 +293,10 @@ fn process_processors(config: &RuntimeConfig) -> Result<()> {
         log::debug!("args:{args:#?}");
 
         let classpath = MavenCoord::parse(&process.classpath[0]).to_path_string();
-        let classpath = Path::new(&config.game_dir)
-            .join("libraries")
-            .join(classpath);
+        let classpath = Path::new(&game_dir).join("libraries").join(classpath);
         log::debug!("program path: {}", classpath.to_str().unwrap());
 
-        let mut command = Command::new(&config.java_path)
+        let mut command = Command::new(&config.config().java_path)
             .args(["-jar", classpath.to_str().unwrap()])
             .args(args)
             .stdout(Stdio::piped())

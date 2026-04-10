@@ -1,4 +1,4 @@
-use crate::config::RuntimeConfig;
+use crate::config::ConfigHandler;
 use anyhow::Result;
 
 /// Trait for Minecraft installer implementations.
@@ -13,5 +13,5 @@ pub(super) trait MCInstaller {
     /// - `anyhow::Error` if the version manifest cannot be fetched
     /// - `anyhow::Error` if the loader version is not found
     /// - `anyhow::Error` if dependencies cannot be downloaded or installed
-    fn install(config: &RuntimeConfig) -> Result<()>;
+    fn install(config: &ConfigHandler) -> Result<()>;
 }

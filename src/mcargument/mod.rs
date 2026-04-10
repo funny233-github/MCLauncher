@@ -56,11 +56,12 @@ fn replace_arguments_from_jvm(
     handle: &ConfigHandler,
     version_api: &Version,
 ) -> anyhow::Result<Vec<String>> {
-    let natives_dir: String = Path::new(&handle.config().game_dir)
+    let game_dir = handle.get_absolute_game_dir()?;
+    let natives_dir: String = Path::new(&game_dir)
         .join("natives")
         .to_string_lossy()
         .into();
-    let library_dir: String = Path::new(&handle.config().game_dir)
+    let library_dir: String = Path::new(&game_dir)
         .join("libraries")
         .to_str()
         .unwrap()
@@ -90,10 +91,8 @@ fn replace_arguments_from_game(
     handle: &ConfigHandler,
 ) -> anyhow::Result<Vec<String>> {
     let js = handle.version_api()?;
-    let assets_root: String = Path::new(&handle.config().game_dir)
-        .join("assets")
-        .to_string_lossy()
-        .into();
+    let game_dir = handle.get_absolute_game_dir()?;
+    let assets_root: String = Path::new(&game_dir).join("assets").to_string_lossy().into();
     let assets_index_name = js.assets;
     let mut valuemap = HashMap::from([
         (
@@ -101,7 +100,7 @@ fn replace_arguments_from_game(
             handle.user_account().user_name.clone(),
         ),
         ("${version_name}", handle.config().game_version.clone()),
-        ("${game_directory}", handle.config().game_dir.clone()),
+        ("${game_directory}", game_dir.clone()),
         ("${assets_root}", assets_root),
         ("${assets_index_name}", assets_index_name),
         ("${auth_uuid}", handle.user_account().user_uuid.clone()),
@@ -199,6 +198,7 @@ impl ConfigHandler {
     /// - `anyhow::Error` if a library path cannot be constructed
     /// - `anyhow::Error` if version comparison fails
     fn get_classpaths(&self, version_api: &Version) -> anyhow::Result<String> {
+        let game_dir = self.get_absolute_game_dir()?;
         let mut paths: Vec<String> = version_api
             .libraries
             .iter()
@@ -236,7 +236,7 @@ impl ConfigHandler {
                 match has_greater_version {
                     Ok(has_greater_version) => {
                         if lib.is_target_lib() && !has_greater_version {
-                            let path = Path::new(&self.config().game_dir)
+                            let path = Path::new(&game_dir)
                                 .join("libraries")
                                 .join(&lib.downloads.artifact.path)
                                 .to_string_lossy()
@@ -252,7 +252,7 @@ impl ConfigHandler {
             })
             .collect::<Result<_>>()?;
 
-        let client_path = Path::new(&self.config().game_dir)
+        let client_path = Path::new(&game_dir)
             .join("versions")
             .join(&self.config().game_version)
             .join(self.config().game_version.clone() + ".jar")
@@ -275,7 +275,7 @@ impl ConfigHandler {
     /// - `anyhow::Error` if the JSON cannot be parsed
     /// - `anyhow::Error` if the file is missing or inaccessible
     fn version_api(&self) -> anyhow::Result<Version> {
-        let jsfile_path = Path::new(&self.config().game_dir)
+        let jsfile_path = Path::new(&self.get_absolute_game_dir()?)
             .join("versions")
             .join(&self.config().game_version)
             .join(self.config().game_version.clone() + ".json");

@@ -1,6 +1,6 @@
 use super::install_dependencies;
 use super::mc_installer::MCInstaller;
-use crate::config::RuntimeConfig;
+use crate::config::{ConfigHandler, RuntimeConfig};
 use anyhow::Result;
 use mc_api::official::{Version, VersionManifest};
 use std::fs;
@@ -17,18 +17,19 @@ use std::path::Path;
 pub(super) struct VanillaInstaller;
 
 impl MCInstaller for VanillaInstaller {
-    fn install(config: &RuntimeConfig) -> Result<()> {
-        let version_json_file_path = Path::new(&config.game_dir)
+    fn install(config: &ConfigHandler) -> Result<()> {
+        let game_dir = config.get_absolute_game_dir()?;
+        let version_json_file_path = Path::new(&game_dir)
             .join("versions")
-            .join(&config.game_version)
-            .join(config.game_version.clone() + ".json");
+            .join(&config.config().game_version)
+            .join(config.config().game_version.clone() + ".json");
 
         if !version_json_file_path.exists() {
-            let version = fetch_version(config)?;
+            let version = fetch_version(config.config())?;
             version.install(&version_json_file_path);
         }
 
-        let native_dir = Path::new(&config.game_dir).join("natives");
+        let native_dir = Path::new(&game_dir).join("natives");
         fs::create_dir_all(native_dir).unwrap_or(());
 
         let mut version_json_file = File::open(version_json_file_path)?;
