@@ -38,6 +38,7 @@ pub fn gameruntime(handle: &ConfigHandler) -> anyhow::Result<()> {
     let mut child = Command::new(path)
         .args(args)
         .stdout(Stdio::piped())
+        .current_dir(&handle.get_absolute_game_dir()?)
         .spawn()?;
 
     io::copy(

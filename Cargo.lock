@@ -696,7 +696,7 @@ dependencies = [
 
 [[package]]
 name = "gluon"
-version = "0.6.6"
+version = "0.7.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1037,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "installer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1224,7 +1224,7 @@ dependencies = [
 
 [[package]]
 name = "mc-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "mc-oauth"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "env_logger",
@@ -1286,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "modrinth-api"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "reqwest",

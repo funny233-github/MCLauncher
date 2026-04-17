@@ -28,7 +28,7 @@
 //! ```
 
 use crate::modmanage::{fetch_version, fetch_version_blocking};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Subcommand;
 use mc_api::official;
 use mc_oauth::MinecraftAuthenticator;
@@ -175,8 +175,9 @@ pub struct RuntimeConfig {
     pub window_weight: u32,
     /// Window height in pixels.
     pub window_height: u32,
-    /// Path to the game directory.
-    pub game_dir: String,
+    /// Path to the game directory. To get `game_dir`, use `ConfigHandler::get_absolute_game_dir`
+    /// instead.
+    game_dir: String,
     /// Minecraft versions directory string.
     pub game_version: String,
     /// Path to Java executable.
@@ -724,17 +725,47 @@ impl ConfigHandler {
             .clone()
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
-    /// Reads configuration files from the default paths.
+
+    /// Searches upward for config.toml starting from the current directory.
     ///
+    /// Returns the directory containing config.toml, or an error if the
+    /// filesystem root is reached without finding it.
+    ///
+    /// # Errors
+    /// Returns an error if config.toml is not found before reaching the filesystem root.
+    fn find_config_root() -> Result<std::path::PathBuf> {
+        let mut current = std::env::current_dir()?;
+        loop {
+            let config_path = current.join("config.toml");
+            if config_path.exists() {
+                return Ok(current);
+            }
+            current = current
+                .parent()
+                .context("reached filesystem root without finding config.toml")?
+                .to_path_buf();
+        }
+    }
+
+    /// Reads configuration files by searching for config.toml upward from current directory.
+    ///
+    /// Searches upward from the current working directory until it finds config.toml,
+    /// then uses that directory as the root for all configuration files.
     /// Reads config.toml, config.lock, and account.toml. If config.lock or
     /// account.toml don't exist, they are created with default values.
     ///
     /// # Errors
-    /// - `anyhow::Error` if config.toml does not exist
+    /// - `anyhow::Error` if config.toml is not found (search reaches filesystem root)
     /// - `anyhow::Error` if config.toml contains invalid TOML
     /// - `anyhow::Error` if configuration validation fails
     pub fn read() -> Result<Self> {
-        ConfigHandler::read_from_paths(ConfigPaths::default())
+        let root = Self::find_config_root()?;
+        let paths = ConfigPaths {
+            config: root.join("config.toml").display().to_string(),
+            locked_config: root.join("config.lock").display().to_string(),
+            user_account: root.join("account.toml").display().to_string(),
+        };
+        ConfigHandler::read_from_paths(paths)
     }
 
     /// Reads configuration files from custom paths.
@@ -833,7 +864,7 @@ impl ConfigHandler {
             toml::to_string_pretty(self.user_account())?,
         )?;
 
-        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        let mod_dir = Path::new(&self.get_absolute_game_dir()?).join("mods");
         if fs::metadata(mod_dir).is_ok() {
             self.disable_unuse_mods()?;
             self.enable_used_mods()?;
@@ -852,26 +883,30 @@ impl ConfigHandler {
     /// - `anyhow::Error` if mod file enabling/disabling fails
     pub fn write_with_mut(&self) -> Result<()> {
         if self.config.has_mut_accessed() {
+            log::debug!("write config");
             fs::write(
                 &self.paths.config,
                 toml::to_string_pretty(self.config.get())?,
             )?;
         }
         if self.locked_config.has_mut_accessed() {
+            log::debug!("write locked config");
             fs::write(
                 &self.paths.locked_config,
                 toml::to_string_pretty(self.locked_config.get())?,
             )?;
         }
         if self.user_account.has_mut_accessed() {
+            log::debug!("write user account");
             fs::write(
                 &self.paths.user_account,
                 toml::to_string_pretty(self.user_account())?,
             )?;
         }
 
-        let mod_dir = Path::new(&self.config().game_dir).join("mods");
-        if fs::metadata(mod_dir).is_ok() {
+        let mod_dir = Path::new(&self.get_absolute_game_dir()?).join("mods");
+        if fs::exists(mod_dir)? {
+            log::debug!("disable unuse mods and enable used mods");
             self.disable_unuse_mods()?;
             self.enable_used_mods()?;
         }
@@ -886,8 +921,12 @@ impl ConfigHandler {
     /// - `anyhow::Error` if the mod file does not exist
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
         // Error when file not found
-        let path = Path::new(&self.config().game_dir).join("mods").join(name);
-        fs::metadata(path)?;
+        let path = Path::new(&self.get_absolute_game_dir()?)
+            .join("mods")
+            .join(name);
+        if !fs::exists(path)? {
+            return Err(anyhow::anyhow!("The {name} not exist"));
+        }
 
         if !self.has_mod_name(name) {
             self.config_mut().add_local_mod(name);
@@ -989,7 +1028,7 @@ impl ConfigHandler {
         let mod_info = locked_mods
             .get(name)
             .ok_or_else(|| anyhow::anyhow!("Mod '{name}' not found in locked config"))?;
-        let file_path = Path::new(&self.config().game_dir)
+        let file_path = Path::new(&self.get_absolute_game_dir()?)
             .join("mods")
             .join(&mod_info.file_name);
         // the config independent with file of mod
@@ -1023,7 +1062,7 @@ impl ConfigHandler {
         reason = "case_sensitive is need"
     )]
     pub fn disable_unuse_mods(&self) -> Result<()> {
-        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        let mod_dir = Path::new(&self.get_absolute_game_dir()?).join("mods");
         if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
@@ -1107,6 +1146,44 @@ impl ConfigHandler {
             }
         }
         Ok(())
+    }
+
+    /// Gets the absolute path to the game directory.
+    ///
+    /// This method resolves `game_dir` to an absolute path for internal use.
+    /// If `game_dir` in `config.toml` is already an absolute path, it is returned as-is.
+    /// If `game_dir` is a relative path, it is resolved relative to the directory
+    /// containing `config.toml`.
+    ///
+    /// This ensures that file operations always work correctly regardless of the
+    /// current working directory when the program is run.
+    ///
+    /// # Returns
+    /// An absolute path string to the game directory.
+    ///
+    /// # Errors
+    /// - Returns an error if the parent directory of `config.toml` cannot be determined
+    /// - Returns an error if the resolved path cannot be converted to a valid string
+    pub fn get_absolute_game_dir(&self) -> Result<String> {
+        let config_path = Path::new(&self.paths.config)
+            .parent()
+            .with_context(|| {
+                format!(
+                    "Failed to get parent directory of config file: {}",
+                    self.paths.config
+                )
+            })?;
+        let game_dir = Path::new(&self.config.game_dir);
+        if game_dir.is_absolute() {
+            return Ok(self.config.game_dir.clone());
+        }
+        let path = config_path.join(game_dir);
+        let path_str = path
+            .to_str()
+            .with_context(|| {
+                format!("Failed to convert path to string: {}", path.display())
+            })?;
+        Ok(path_str.to_string())
     }
 }
 

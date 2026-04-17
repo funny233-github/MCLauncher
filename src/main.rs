@@ -243,7 +243,7 @@ fn handle_args() -> anyhow::Result<()> {
         } => {
             let mut handle = ConfigHandler::read()?;
             if version.is_none() && fabric.is_none() {
-                install_mc(handle.config())?;
+                install_mc(&handle)?;
                 return Ok(());
             }
 
@@ -265,7 +265,7 @@ fn handle_args() -> anyhow::Result<()> {
                 handle.config_mut().loader = MCLoader::None;
             }
             drop(handle);
-            install_mc(ConfigHandler::read()?.config())?;
+            install_mc(&ConfigHandler::read()?)?;
         }
         Command::Run => {
             let config = ConfigHandler::read()?;

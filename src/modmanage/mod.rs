@@ -255,7 +255,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
     mods.iter()
         .filter(|(_, v)| v.url.is_some() && v.sha1.is_some())
         .map(|(name, v)| {
-            let save_file = Path::new(&handle.config().game_dir)
+            let save_file = Path::new(&handle.get_absolute_game_dir()?)
                 .join("mods")
                 .join(&v.file_name);
             Ok(InstallTask {
@@ -431,7 +431,7 @@ impl SyncUpdateHandle {
             return Ok(());
         }
         let unuse_file_name = format!("{file_name}.unuse");
-        let game_dir = &handle.config().game_dir;
+        let game_dir = &handle.get_absolute_game_dir()?;
         let file_path = Path::new(game_dir).join("mods").join(&unuse_file_name);
         let target_file_path = Path::new(&game_dir).join("mods").join(file_name);
         if fs::exists(&file_path).is_ok_and(|x| x) {
@@ -632,7 +632,7 @@ fn clean_locked_config_mods() -> Result<()> {
 )]
 fn clean_file_mods() -> Result<()> {
     let handle = ConfigHandler::read()?;
-    let mods_dir = Path::new(&handle.config().game_dir).join("mods");
+    let mods_dir = Path::new(&handle.get_absolute_game_dir()?).join("mods");
     WalkDir::new(mods_dir)
         .into_iter()
         .filter_entry(|entry| {

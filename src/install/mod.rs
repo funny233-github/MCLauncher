@@ -41,7 +41,7 @@
 //! install_mc(&config).expect("Installation failed");
 //! ```
 
-use crate::config::{MCLoader, RuntimeConfig};
+use crate::config::{ConfigHandler, MCLoader};
 use installer::{InstallTask, TaskPool};
 use mc_api::official::{Artifact, Assets, Version};
 use regex::Regex;
@@ -153,8 +153,8 @@ pub enum InstallType {
 /// - `anyhow::Error` if native libraries cannot be extracted
 /// - `anyhow::Error` if file system operations fail
 /// - `anyhow::Error` if network errors occur during download
-pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
-    match config.loader {
+pub fn install_mc(config: &ConfigHandler) -> anyhow::Result<()> {
+    match config.config().loader {
         MCLoader::None => VanillaInstaller::install(config)?,
         MCLoader::Fabric(_) => FabricInstaller::install(config)?,
         MCLoader::Neoforge(_) => NeoforgeInstaller::install(config)?,
@@ -173,35 +173,39 @@ pub fn install_mc(config: &RuntimeConfig) -> anyhow::Result<()> {
 /// - `anyhow::Error` if download task creation fails
 /// - `anyhow::Error` if download execution fails
 /// - `anyhow::Error` if native library extraction fails
-fn install_dependencies(config: &RuntimeConfig, version: &Version) -> anyhow::Result<()> {
-    let asset_index_file = Path::new(&config.game_dir)
+fn install_dependencies(config: &ConfigHandler, version: &Version) -> anyhow::Result<()> {
+    let game_dir = config.get_absolute_game_dir()?;
+    let asset_index_file = Path::new(&game_dir)
         .join("assets")
         .join("indexes")
         .join(version.asset_index.id.clone() + ".json");
     println!("fetching assets/libraries/natives...");
-    let assets = Assets::fetch(&version.asset_index, &config.mirror.version_manifest)?;
+    let assets = Assets::fetch(
+        &version.asset_index,
+        &config.config().mirror.version_manifest,
+    )?;
     assets.install(&asset_index_file);
-    let mut tasks = assets_installtask(&config.game_dir, &config.mirror.assets, &assets)?;
+    let mut tasks = assets_installtask(&game_dir, &config.config().mirror.assets, &assets)?;
     tasks.append(&mut libraries_installtask(
-        &config.game_dir,
-        &config.mirror.libraries,
-        &config.mirror.fabric_maven,
+        &game_dir,
+        &config.config().mirror.libraries,
+        &config.config().mirror.fabric_maven,
         version,
     )?);
     tasks.push_back(client_installtask(
-        &config.game_dir,
-        &config.game_version,
-        &config.mirror.client,
+        &game_dir,
+        &config.config().game_version,
+        &config.config().mirror.client,
         version,
     )?);
     tasks.append(&mut native_installtask(
-        &config.game_dir,
-        &config.mirror.libraries,
+        &game_dir,
+        &config.config().mirror.libraries,
         version,
     )?);
     TaskPool::from(tasks).install();
     println!("extracting natives ...");
-    native_extract(&config.game_dir, version)?;
+    native_extract(&game_dir, version)?;
     Ok(())
 }
 
