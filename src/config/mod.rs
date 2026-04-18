@@ -612,6 +612,18 @@ pub struct ConfigHandler {
     paths: ConfigPaths,
 }
 
+impl Default for ConfigHandler {
+    /// Creates a default configuration handler.
+    fn default() -> Self {
+        Self {
+            config: Mac::new(RuntimeConfig::default()),
+            locked_config: Mac::new(LockedConfig::default()),
+            user_account: Mac::new(UserAccount::default()),
+            paths: ConfigPaths::default(),
+        }
+    }
+}
+
 impl ConfigHandler {
     /// Returns a reference to the runtime configuration.
     #[inline]

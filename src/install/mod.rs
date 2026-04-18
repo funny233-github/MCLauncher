@@ -21,23 +21,9 @@
 //! # Example
 //! ```no_run
 //! use gluon::install::install_mc;
-//! use gluon::config::RuntimeConfig;
-//! use gluon::config::MCLoader;
-//! use gluon::config::MCMirror;
+//! use gluon::config::ConfigHandler;
 //!
-//! let config = RuntimeConfig {
-//!     max_memory_size: 1000000,
-//!     window_weight: 100,
-//!     window_height: 100,
-//!     game_dir: "/path/to/game".to_string(),
-//!     game_version: "1.21.1".to_string(),
-//!     java_path: "/path/to/java".to_string(),
-//!     vanilla: "1.21.1".to_string(),
-//!     loader: MCLoader::None,
-//!     mirror: MCMirror::official_mirror(),
-//!     mods: None,
-//! };
-//!
+//! let config = ConfigHandler::default();
 //! install_mc(&config).expect("Installation failed");
 //! ```
 
@@ -123,23 +109,9 @@ pub enum InstallType {
 /// # Example
 /// ```no_run
 /// use gluon::install::install_mc;
-/// use gluon::config::RuntimeConfig;
-/// use gluon::config::MCMirror;
-/// use gluon::config::MCLoader;
+/// use gluon::config::ConfigHandler;
 ///
-/// let config = RuntimeConfig {
-///     max_memory_size: 1000,
-///     window_weight: 100,
-///     window_height: 100,
-///     game_dir: "/path/to/game".to_string(),
-///     game_version: "1.21.1".to_string(),
-///     java_path: "/path/to/java".to_string(),
-///     vanilla: "1.21.1".to_string(),
-///     loader: MCLoader::None,
-///     mirror: MCMirror::official_mirror(),
-///     mods: None,
-/// };
-///
+/// let config = ConfigHandler::default();
 /// if let Err(e) = install_mc(&config) {
 ///     eprintln!("Installation failed: {}", e);
 /// }

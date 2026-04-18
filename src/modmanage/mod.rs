@@ -72,22 +72,10 @@ fn filter_versions(
 /// ```no_run
 /// use gluon::modmanage::fetch_version;
 /// use gluon::config::RuntimeConfig;
-/// use gluon::config::MCLoader;
-/// use gluon::config::MCMirror;
 ///
 /// # #[tokio::test]
 /// # async fn test() -> anyhow::Result<()> {
-/// let config = RuntimeConfig {
-///     max_memory_size: 1000000,
-///     window_weight: 100,
-///     window_height: 100,
-///     game_dir: "/path/to/game".to_string(),
-///     game_version: "1.16.5".to_string(),
-///     java_path: "/path/to/java".to_string(),
-///     loader: MCLoader::None,
-///     mirror: MCMirror::official_mirror(),
-///     mods: None,
-/// };
+/// let config = RuntimeConfig::default();
 /// let versions = fetch_version("fabric-api", None, &config).await?;
 /// println!("Found {} compatible versions", versions.len());
 /// # Ok(())
