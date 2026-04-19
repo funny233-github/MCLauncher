@@ -359,7 +359,7 @@ pub struct Versions {
     /// When this version was published.
     pub time: String,
     /// When this version was originally released.
-    #[serde[rename = "releaseTime"]]
+    #[serde(rename = "releaseTime")]
     pub release_time: String,
 }
 

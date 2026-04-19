@@ -348,12 +348,19 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
         })
 }
 
+/// Native library file extension for the current platform.
+#[cfg(target_os = "linux")]
+const NATIVE_EXT: &str = ".so";
+#[cfg(target_os = "windows")]
+const NATIVE_EXT: &str = ".dll";
+#[cfg(target_os = "macos")]
+const NATIVE_EXT: &str = ".dylib";
+
 /// Extracts native files from a JAR archive.
 ///
-/// Extracts platform-specific native files (e.g., .so files on Linux) from a
-/// JAR file to the game's natives directory. The regex pattern currently only
-/// matches .so files (Linux). This should be made platform-aware for Windows (.dll)
-/// and macOS (.dylib) support.
+/// Extracts platform-specific native files from a JAR file to the game's
+/// natives directory. The file extension matched depends on the compile-time
+/// target platform: `.so` on Linux, `.dll` on Windows, `.dylib` on macOS.
 ///
 /// # Errors
 /// - `anyhow::Error` if the JAR file cannot be opened
@@ -362,7 +369,7 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
 fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
     let jar_file = fs::File::open(path)?;
     let mut zip = ZipArchive::new(jar_file)?;
-    let regex = Regex::new(r"\S+.so$")?;
+    let regex = Regex::new(&format!(r"\S+\{NATIVE_EXT}$"))?;
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i)?;
         if !entry.is_dir() && regex.captures(entry.name()).is_some() {

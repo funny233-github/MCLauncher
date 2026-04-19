@@ -131,15 +131,11 @@ impl ModConfig {
 /// Runtime configuration for the Minecraft launcher.
 ///
 /// Contains user-configurable settings for game launching, including memory,
-/// window size, game directory, Java path, loader type, mirror URLs, and mods.
+/// game directory, Java path, loader type, mirror URLs, and mods.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RuntimeConfig {
     /// Maximum memory allocation in MB.
     pub max_memory_size: u32,
-    /// Window width in pixels.
-    pub window_weight: u32,
-    /// Window height in pixels.
-    pub window_height: u32,
     /// Path to the game directory. To get `game_dir`, use `ConfigHandler::get_absolute_game_dir`
     /// instead.
     pub(crate) game_dir: String,
@@ -210,13 +206,11 @@ impl RuntimeConfig {
 impl Default for RuntimeConfig {
     /// Creates a default runtime configuration.
     ///
-    /// Sets sensible defaults: 5GB max memory, 854x480 window size, current directory
+    /// Sets sensible defaults: 5GB max memory, current directory
     /// as game directory, "java" as Java path, no loader (vanilla), and official Mojang mirrors.
     fn default() -> Self {
         RuntimeConfig {
             max_memory_size: 5000,
-            window_weight: 854,
-            window_height: 480,
             game_dir: "./".into(),
             game_version: "no_game_version".into(),
             java_path: "java".into(),
