@@ -239,7 +239,7 @@ impl ConfigHandler {
         reason = "case_sensitive is need"
     )]
     pub fn enable_used_mods(&self) -> Result<()> {
-        let mod_dir = Path::new(&self.config().game_dir).join("mods");
+        let mod_dir = Path::new(&self.get_absolute_game_dir()?).join("mods");
         if fs::metadata(&mod_dir).is_err() {
             return Ok(());
         }
@@ -265,10 +265,10 @@ impl ConfigHandler {
         {
             if let Some(name) = &entry?.file_name().to_str() {
                 if used_files.iter().any(|x| &format!("{x}.unuse") == name) {
-                    let path = Path::new("mods").join(name);
+                    let path = mod_dir.join(name);
                     let mut new_name = name.to_string();
                     new_name.truncate(name.len() - 6);
-                    let new_path = Path::new("mods").join(new_name);
+                    let new_path = mod_dir.join(new_name);
                     fs::rename(path, new_path)?;
                 }
             }
