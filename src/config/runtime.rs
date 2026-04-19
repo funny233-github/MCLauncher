@@ -137,7 +137,7 @@ pub struct RuntimeConfig {
     /// Maximum memory allocation in MB.
     pub max_memory_size: u32,
     /// Window width in pixels.
-    pub window_weight: u32,
+    pub window_width: u32,
     /// Window height in pixels.
     pub window_height: u32,
     /// Path to the game directory. To get `game_dir`, use `ConfigHandler::get_absolute_game_dir`
@@ -215,7 +215,7 @@ impl Default for RuntimeConfig {
     fn default() -> Self {
         RuntimeConfig {
             max_memory_size: 5000,
-            window_weight: 854,
+            window_width: 854,
             window_height: 480,
             game_dir: "./".into(),
             game_version: "no_game_version".into(),

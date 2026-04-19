@@ -68,8 +68,8 @@ fn replace_arguments_from_jvm(
         .to_string();
     let valuemap = HashMap::from([
         ("${natives_directory}", natives_dir),
-        ("${launcher_name}", "my_launcher".into()),
-        ("${launcher_version}", "114.514".into()),
+        ("${launcher_name}", env!("CARGO_PKG_NAME").into()),
+        ("${launcher_version}", env!("CARGO_PKG_VERSION").into()),
         ("${classpath}", handle.get_classpaths(version_api)?),
         ("${library_directory}", library_dir),
     ]);
