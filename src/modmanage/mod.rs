@@ -153,7 +153,7 @@ pub fn add(name: &str, version: Option<&String>, local: bool, config_only: bool)
         format!("Add local mod {name} successful")
     } else {
         config_handler.add_mod_unlocal_blocking(name, version)?;
-        format!("Add mod {name} surcessful")
+        format!("Add mod {name} successful")
     };
     drop(config_handler);
 
@@ -712,7 +712,7 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
     let loader = match handle.config().loader {
-        MCLoader::Neoforge(_) => "neforge",
+        MCLoader::Neoforge(_) => "neoforge",
         MCLoader::Fabric(_) => "fabric",
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
