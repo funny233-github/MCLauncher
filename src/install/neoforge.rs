@@ -311,6 +311,15 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
             .args(args)
             .stdout(Stdio::piped())
             .spawn()?;
+
+        io::copy(
+            &mut command
+                .stderr
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?,
+            &mut io::stderr(),
+        )?;
+
         io::copy(
             &mut command
                 .stdout
