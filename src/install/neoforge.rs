@@ -16,6 +16,7 @@ use std::io;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::thread;
 
 /// Installer for NeoForge-modded Minecraft.
 ///
@@ -310,23 +311,21 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
             .args(["-jar", classpath.to_str().unwrap()])
             .args(args)
             .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
             .spawn()?;
 
-        io::copy(
-            &mut command
-                .stderr
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?,
-            &mut io::stderr(),
-        )?;
+        let mut stderr = command
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
+        let mut stdout = command
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
 
-        io::copy(
-            &mut command
-                .stdout
-                .take()
-                .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?,
-            &mut io::stdout(),
-        )?;
+        let stderr_handle = thread::spawn(move || io::copy(&mut stderr, &mut io::stderr()));
+        io::copy(&mut stdout, &mut io::stdout())?;
+        stderr_handle.join().unwrap()?;
         command.wait()?;
     }
     Ok(())

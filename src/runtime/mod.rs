@@ -21,6 +21,7 @@
 use crate::config::ConfigHandler;
 use std::io;
 use std::process::{Command, Stdio};
+use std::thread;
 
 /// Runs the Minecraft game with the provided configuration.
 ///
@@ -38,24 +39,22 @@ pub fn gameruntime(handle: &ConfigHandler) -> anyhow::Result<()> {
     let mut child = Command::new(path)
         .args(args)
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .current_dir(&handle.get_absolute_game_dir()?)
         .spawn()?;
 
-    io::copy(
-        &mut child
-            .stderr
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?,
-        &mut io::stderr(),
-    )?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?;
 
-    io::copy(
-        &mut child
-            .stdout
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?,
-        &mut io::stdout(),
-    )?;
+    let stderr_handle = thread::spawn(move || io::copy(&mut stderr, &mut io::stderr()));
+    io::copy(&mut stdout, &mut io::stdout())?;
+    stderr_handle.join().unwrap()?;
     child.wait()?;
     Ok(())
 }
