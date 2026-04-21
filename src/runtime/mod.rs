@@ -43,6 +43,14 @@ pub fn gameruntime(handle: &ConfigHandler) -> anyhow::Result<()> {
 
     io::copy(
         &mut child
+            .stderr
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?,
+        &mut io::stderr(),
+    )?;
+
+    io::copy(
+        &mut child
             .stdout
             .take()
             .ok_or_else(|| anyhow::anyhow!("Failed to capture stdout"))?,

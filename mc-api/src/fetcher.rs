@@ -285,17 +285,17 @@ impl FetcherBuilder {
             if let Ok(send) = send {
                 if let DeserializeType::Byte = self.deserialize_type {
                     let data = send.bytes()?;
-                    if let Some(sha1) = self.sha1 {
+                    if let Some(sha1) = self.sha1.clone() {
                         if data.sha1_cmp(&sha1).is_ne() {
-                            break;
+                            continue;
                         }
                     }
                     return Ok(FetcherResult::Byte(data.into()));
                 }
                 let data = send.text()?;
-                if let Some(sha1) = self.sha1 {
+                if let Some(sha1) = self.sha1.clone() {
                     if data.sha1_cmp(&sha1).is_ne() {
-                        break;
+                        continue;
                     }
                 }
                 match self.deserialize_type {

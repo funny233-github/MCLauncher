@@ -30,11 +30,13 @@ pub(super) struct NeoforgeInstaller;
 
 impl MCInstaller for NeoforgeInstaller {
     fn install(config: &ConfigHandler) -> Result<()> {
+        let vanilla_version = config.config().vanilla.clone();
         let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
             return Err(anyhow::anyhow!("the loader is not neoforge"));
         };
         println!("fetch neoforge installer.jar");
-        let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
+        let tmp_dir =
+            std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
         if !tmp_dir.exists() {
             let neoforge_jar = neoforge::Installer::fetch(
                 &config.config().mirror.neoforge_neoforge,
@@ -87,10 +89,12 @@ impl MCInstaller for NeoforgeInstaller {
 /// - `anyhow::Error` if the base version JSON cannot be fetched
 /// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
 fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
+    let vanilla_version = config.vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
-    let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
     let version_json_file = tmp_dir.join("version.json");
     let profile = fs::read_to_string(version_json_file)?;
     let profile: Profile = serde_json::from_str(&profile)?;
@@ -119,10 +123,12 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
 /// - `anyhow::Error` if the loader is not `MCLoader::Neoforge`
 /// - `anyhow::Error` if the installer profile cannot be read or parsed
 fn install_installer_dependencies(config: &ConfigHandler) -> Result<()> {
+    let vanilla_version = config.config().vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
-    let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
     let installer_profile = tmp_dir.join("install_profile.json");
     let installer_profile: InstallerProfile =
         serde_json::from_str(&fs::read_to_string(installer_profile)?)?;
@@ -179,7 +185,9 @@ fn get_variables(config: &ConfigHandler) -> Result<HashMap<String, String>> {
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
-    let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
+    let vanilla_version = config.config().vanilla.clone();
+    let tmp_dir =
+        std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
     let install_profile = tmp_dir.join("install_profile.json");
     let install_profile: InstallerProfile =
         serde_json::from_str(&fs::read_to_string(install_profile)?)?;
@@ -254,10 +262,12 @@ fn get_variables(config: &ConfigHandler) -> Result<HashMap<String, String>> {
 /// - `anyhow::Error` if Maven coordinate paths cannot be resolved
 fn process_processors(config: &ConfigHandler) -> Result<()> {
     println!("process processors");
+    let vanilla_version = config.config().vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
         return Err(anyhow::anyhow!("the loader is not neoforge"));
     };
-    let tmp_dir = std::env::temp_dir().join(format!("neoforge-{neoforge_version}"));
+    let tmp_dir =
+        std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
     let install_profile = tmp_dir.join("install_profile.json");
     let install_profile: InstallerProfile =
         serde_json::from_str(&fs::read_to_string(install_profile)?)?;
@@ -301,6 +311,15 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
             .args(args)
             .stdout(Stdio::piped())
             .spawn()?;
+
+        io::copy(
+            &mut command
+                .stderr
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("Failed to capture stderr"))?,
+            &mut io::stderr(),
+        )?;
+
         io::copy(
             &mut command
                 .stdout
