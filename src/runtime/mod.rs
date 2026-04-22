@@ -33,6 +33,10 @@ use std::thread;
 /// - Launch arguments cannot be generated
 /// - Java process cannot be spawned
 /// - Output cannot be captured
+/// # Panics
+/// Panics if the stderr forwarding thread panics, or if joining the thread fails
+/// (e.g., due to a panic in the stderr copy loop). This is unlikely under normal operation
+/// but can occur if the system is under extreme memory pressure.
 pub fn gameruntime(handle: &ConfigHandler) -> anyhow::Result<()> {
     let args = handle.args_provider()?;
     let path = &handle.config().java_path;
