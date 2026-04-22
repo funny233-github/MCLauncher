@@ -7,9 +7,9 @@
 //!
 //! | Loader | Installer | Description |
 //! |--------|-----------|-------------|
-//! | Vanilla | [`VanillaInstaller`] | Unmodded Minecraft |
-//! | Fabric | [`FabricInstaller`] | Fabric mod loader |
-//! | `NeoForge` | [`NeoforgeInstaller`] | `NeoForge` mod loader with installer processors |
+//! | Vanilla | `VanillaInstaller` | Unmodded Minecraft |
+//! | Fabric | `FabricInstaller` | Fabric mod loader |
+//! | `NeoForge` | `NeoforgeInstaller` | `NeoForge` mod loader with installer processors |
 //!
 //! # Installation Workflow
 //!
@@ -271,9 +271,7 @@ fn native_installtask(
                 .as_ref()
                 .ok_or_else(|| anyhow::anyhow!("failed to get natives"))?
                 .get(OS)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("no natives available for OS {OS}")
-                })?;
+                .ok_or_else(|| anyhow::anyhow!("no natives available for OS {OS}"))?;
             let artifact: &Artifact = x
                 .downloads
                 .classifiers
@@ -468,7 +466,7 @@ fn assets_installtask(
                 message: format!(
                     "Asset {} installed",
                     sha1.as_ref()
-.ok_or_else(|| anyhow::anyhow!("failed to get asset SHA1"))?
+                        .ok_or_else(|| anyhow::anyhow!("failed to get asset SHA1"))?
                 ),
                 sha1,
             })
