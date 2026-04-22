@@ -56,7 +56,7 @@ impl ConfigHandler {
             .join("mods")
             .join(name);
         if !fs::exists(path)? {
-            return Err(anyhow::anyhow!("The {name} not exist"));
+            return Err(anyhow::anyhow!("mod '{name}' does not exist"));
         }
 
         if !self.has_mod_name(name) {

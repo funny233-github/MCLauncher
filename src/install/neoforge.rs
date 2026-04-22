@@ -33,7 +33,7 @@ impl MCInstaller for NeoforgeInstaller {
     fn install(config: &ConfigHandler) -> Result<()> {
         let vanilla_version = config.config().vanilla.clone();
         let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
-            return Err(anyhow::anyhow!("the loader is not neoforge"));
+            return Err(anyhow::anyhow!("loader is not NeoForge"));
         };
         println!("fetch neoforge installer.jar");
         let tmp_dir =
@@ -92,7 +92,7 @@ impl MCInstaller for NeoforgeInstaller {
 fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     let vanilla_version = config.vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.loader.clone() else {
-        return Err(anyhow::anyhow!("the loader is not neoforge"));
+        return Err(anyhow::anyhow!("loader is not NeoForge"));
     };
     let tmp_dir =
         std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
@@ -105,7 +105,7 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
 
     if !manifest.versions.iter().any(|x| x.id == config.vanilla) {
         return Err(anyhow::anyhow!(
-            "Cant' find the minecraft version {}",
+            "Cannot find the minecraft version {}",
             &config.game_version
         ));
     }
@@ -126,7 +126,7 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
 fn install_installer_dependencies(config: &ConfigHandler) -> Result<()> {
     let vanilla_version = config.config().vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
-        return Err(anyhow::anyhow!("the loader is not neoforge"));
+        return Err(anyhow::anyhow!("loader is not NeoForge"));
     };
     let tmp_dir =
         std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
@@ -184,7 +184,7 @@ fn libraries_installtask(path: &str, profile: &InstallerProfile) -> VecDeque<Ins
 fn get_variables(config: &ConfigHandler) -> Result<HashMap<String, String>> {
     println!("format variables");
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
-        return Err(anyhow::anyhow!("the loader is not neoforge"));
+        return Err(anyhow::anyhow!("loader is not NeoForge"));
     };
     let vanilla_version = config.config().vanilla.clone();
     let tmp_dir =
@@ -265,7 +265,7 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
     println!("process processors");
     let vanilla_version = config.config().vanilla.clone();
     let MCLoader::Neoforge(neoforge_version) = config.config().loader.clone() else {
-        return Err(anyhow::anyhow!("the loader is not neoforge"));
+        return Err(anyhow::anyhow!("loader is not NeoForge"));
     };
     let tmp_dir =
         std::env::temp_dir().join(format!("{vanilla_version}-neoforge-{neoforge_version}"));
