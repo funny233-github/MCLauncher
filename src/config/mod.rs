@@ -402,7 +402,8 @@ impl Drop for ConfigHandler {
     #[inline]
     fn drop(&mut self) {
         if let Err(e) = self.write_with_mut() {
-            panic!("Failed to write config on drop: {e}");
+            eprintln!("Failed to write config on drop: {e}");
+            std::process::exit(1);
         }
     }
 }
