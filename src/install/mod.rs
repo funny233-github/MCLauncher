@@ -7,9 +7,9 @@
 //!
 //! | Loader | Installer | Description |
 //! |--------|-----------|-------------|
-//! | Vanilla | [`VanillaInstaller`] | Unmodded Minecraft |
-//! | Fabric | [`FabricInstaller`] | Fabric mod loader |
-//! | `NeoForge` | [`NeoforgeInstaller`] | `NeoForge` mod loader with installer processors |
+//! | Vanilla | `VanillaInstaller` | Unmodded Minecraft |
+//! | Fabric | `FabricInstaller` | Fabric mod loader |
+//! | `NeoForge` | `NeoforgeInstaller` | `NeoForge` mod loader with installer processors |
 //!
 //! # Installation Workflow
 //!
@@ -78,7 +78,7 @@ impl DomainReplacer<String> for String {
         let regex = Regex::new(r"(?<replace>https://\S+?/)")?;
         let replace = regex
             .captures(self.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Cant' find the replace string"))?;
+            .ok_or_else(|| anyhow::anyhow!("Cannot find the replace string"))?;
         Ok(self.replace(&replace["replace"], domain))
     }
 }
@@ -269,18 +269,16 @@ fn native_installtask(
             let key = x
                 .natives
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("take natives failed"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get natives"))?
                 .get(OS)
-                .ok_or_else(|| {
-                    anyhow::anyhow!("take {OS} natives failed, there is no natives for this os")
-                })?;
+                .ok_or_else(|| anyhow::anyhow!("no natives available for OS {OS}"))?;
             let artifact: &Artifact = x
                 .downloads
                 .classifiers
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("take classifiers failed"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get classifiers"))?
                 .get(key)
-                .ok_or_else(|| anyhow::anyhow!("take {key} natives failed"))?;
+                .ok_or_else(|| anyhow::anyhow!("failed to get natives for {key}"))?;
             let path = &artifact.path;
             let save_file = Path::new(game_dir).join("libraries").join(path);
             Ok(InstallTask {
@@ -332,16 +330,16 @@ fn native_extract(game_dir: &str, version_json: &Version) -> anyhow::Result<()> 
             let key = lib
                 .natives
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("take natives failed"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get natives"))?
                 .get(OS)
-                .ok_or_else(|| anyhow::anyhow!("take {OS} natives failed"))?;
+                .ok_or_else(|| anyhow::anyhow!("no natives available for OS {OS}"))?;
             let artifact: &Artifact = lib
                 .downloads
                 .classifiers
                 .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("take classifiers failed"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get classifiers"))?
                 .get(key)
-                .ok_or_else(|| anyhow::anyhow!("take {key} natives failed"))?;
+                .ok_or_else(|| anyhow::anyhow!("failed to get natives for {key}"))?;
             let file_path = Path::new(game_dir).join("libraries").join(&artifact.path);
             extract(game_dir, file_path)?;
             Ok(())
@@ -378,7 +376,7 @@ fn extract(game_dir: &str, path: PathBuf) -> anyhow::Result<()> {
             fs::create_dir_all(
                 file_path
                     .parent()
-                    .ok_or_else(|| anyhow::anyhow!("take parent failed"))?,
+                    .ok_or_else(|| anyhow::anyhow!("failed to get parent directory"))?,
             )?;
             let mut output = fs::File::create(file_path)?;
             std::io::copy(&mut entry, &mut output)?;
@@ -408,11 +406,11 @@ fn client_installtask(
         url: json_client["url"]
             .as_str()
             .map(|str| str.to_string().replace_domain(client_mirror))
-            .ok_or_else(|| anyhow::anyhow!("take url failed"))??,
+            .ok_or_else(|| anyhow::anyhow!("failed to get client URL"))??,
         sha1: Some(
             json_client["sha1"]
                 .as_str()
-                .ok_or_else(|| anyhow::anyhow!("take sha1 failed"))?
+                .ok_or_else(|| anyhow::anyhow!("failed to get client SHA1"))?
                 .to_string(),
         ),
         save_file: Path::new(game_dir)
@@ -468,7 +466,7 @@ fn assets_installtask(
                 message: format!(
                     "Asset {} installed",
                     sha1.as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("take sha1 failed"))?
+                        .ok_or_else(|| anyhow::anyhow!("failed to get asset SHA1"))?
                 ),
                 sha1,
             })

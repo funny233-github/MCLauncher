@@ -148,10 +148,11 @@ impl Versions {
         let client = Client::new();
         let mut err_detail = None;
         for _ in 0..5 {
+            let url = reqwest::Url::parse("https://api.modrinth.com/v2/project/")
+                .and_then(|base| base.join(&(slug.to_owned() + "/version")))
+                .map_err(|e| anyhow::anyhow!("invalid slug: {e}"))?;
             let init = client
-                .get(format!(
-                    "https://api.modrinth.com/v2/project/{slug}/version"
-                ))
+                .get(url)
                 .header(
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
@@ -194,13 +195,14 @@ impl Versions {
     /// Returns an error if the HTTP request fails after retries, the response
     /// cannot be parsed, or the project slug does not exist.
     pub async fn fetch(slug: &str) -> Result<Vec<Version>> {
+        let url = reqwest::Url::parse("https://api.modrinth.com/v2/project/")
+            .and_then(|base| base.join(&(slug.to_owned() + "/version")))
+            .map_err(|e| anyhow::anyhow!("invalid slug: {e}"))?;
         let client = reqwest::Client::new();
         let mut err_detail = None;
         for _ in 0..5 {
             let init = client
-                .get(format!(
-                    "https://api.modrinth.com/v2/project/{slug}/version"
-                ))
+                .get(url.clone())
                 .header(
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
@@ -389,11 +391,11 @@ impl Projects {
         }
         for _ in 0..5 {
             let init = client
-                .get(format!(
-                    "https://api.modrinth.com/v2/search?query={}&limit={}",
-                    query,
-                    limit.unwrap_or(10)
-                ))
+                .get("https://api.modrinth.com/v2/search")
+                .query(&[
+                    ("query", query),
+                    ("limit", &limit.unwrap_or(10).to_string()),
+                ])
                 .header(
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",
@@ -447,11 +449,11 @@ impl Projects {
         }
         for _ in 0..5 {
             let init = client
-                .get(format!(
-                    "https://api.modrinth.com/v2/search?query={}&limit={}",
-                    query,
-                    limit.unwrap_or(10)
-                ))
+                .get("https://api.modrinth.com/v2/search")
+                .query(&[
+                    ("query", query),
+                    ("limit", &limit.unwrap_or(10).to_string()),
+                ])
                 .header(
                     reqwest::header::USER_AGENT,
                     "github.com/funny233-github/MCLauncher",

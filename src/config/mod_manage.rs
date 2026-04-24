@@ -14,8 +14,8 @@ impl ConfigHandler {
     pub fn has_mod_name(&self, mod_name: &str) -> bool {
         self.config()
             .mods
-            .clone()
-            .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
+            .as_ref()
+            .is_some_and(|mods| mods.contains_key(mod_name))
     }
 
     /// Checks if a mod exists in the locked config.
@@ -23,8 +23,8 @@ impl ConfigHandler {
     pub fn has_locked_mod_name(&self, mod_name: &str) -> bool {
         self.locked_config()
             .mods
-            .clone()
-            .is_some_and(|mods| mods.iter().any(|(name, _)| name == mod_name))
+            .as_ref()
+            .is_some_and(|mods| mods.contains_key(mod_name))
     }
 
     /// Checks if a mod configuration matches the given config.
@@ -32,7 +32,7 @@ impl ConfigHandler {
     pub fn is_mod_config_match(&self, name: &str, mod_conf: &ModConfig) -> bool {
         self.config()
             .mods
-            .clone()
+            .as_ref()
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
@@ -41,7 +41,7 @@ impl ConfigHandler {
     pub fn is_locked_mod_config_match(&self, name: &str, mod_conf: &LockedModConfig) -> bool {
         self.locked_config()
             .mods
-            .clone()
+            .as_ref()
             .is_some_and(|mods| mods.get(name).is_some_and(|conf| conf == mod_conf))
     }
 
@@ -56,7 +56,7 @@ impl ConfigHandler {
             .join("mods")
             .join(name);
         if !fs::exists(path)? {
-            return Err(anyhow::anyhow!("The {name} not exist"));
+            return Err(anyhow::anyhow!("mod '{name}' does not exist"));
         }
 
         if !self.has_mod_name(name) {
