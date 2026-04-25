@@ -67,24 +67,7 @@ ensure_install_dir() {
   mkdir -p "${INSTALL_DIR}"
 }
 
-add_to_path() {
-  local shell_rc=""
-  local profile_line="export PATH=\"\${HOME}/.local/bin:\${PATH}\""
 
-  if [[ -n "${ZSH_VERSION:-}" ]]; then
-    shell_rc="${HOME}/.zshrc"
-  elif [[ -n "${BASH_VERSION:-}" ]]; then
-    shell_rc="${HOME}/.bashrc"
-  fi
-
-  if [[ -n "${shell_rc}" ]] && [[ -f "${shell_rc}" ]]; then
-    if ! grep -qF '.local/bin' "${shell_rc}" 2>/dev/null; then
-      echo "${profile_line}" >>"${shell_rc}"
-      info "Added ${INSTALL_DIR} to PATH in ${shell_rc}"
-      info "Run 'source ${shell_rc}' or start a new terminal to apply."
-    fi
-  fi
-}
 
 uninstall() {
   local target="${INSTALL_DIR}/${BINARY_NAME}"
@@ -160,7 +143,9 @@ install() {
 
   if ! echo ":${PATH}:" | grep -q ":${INSTALL_DIR}:"; then
     warn "${INSTALL_DIR} is not in your PATH."
-    add_to_path
+    info "Add it by running:"
+    info "  echo 'export PATH=\"\${HOME}/.local/bin:\${PATH}\"' >> ~/.bashrc"
+    info "  source ~/.bashrc"
   fi
 
   info "Run '${BINARY_NAME} --help' to get started."
