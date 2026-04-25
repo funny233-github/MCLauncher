@@ -9,13 +9,10 @@ TAG_NAME=""
 ASSET_NAME=""
 DOWNLOAD_URL=""
 UNINSTALL=false
+TEMP_FILES=()
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" 2>/dev/null && pwd)"
-CONF_FILE="${SCRIPT_DIR}/install.conf"
-
-if [[ -f "${CONF_FILE}" ]]; then
-  eval "$(grep -E '^[A-Z_]+=' "${CONF_FILE}")"
-fi
+cleanup() { rm -f "${TEMP_FILES[@]+"${TEMP_FILES[@]}"}"; }
+trap cleanup EXIT INT TERM
 
 usage() {
   cat <<EOF
@@ -122,6 +119,7 @@ fetch_latest_release() {
   local api_url="https://api.github.com/repos/${REPO}/releases/latest"
   local tmp
   tmp="$(mktemp)"
+  TEMP_FILES+=("${tmp}")
 
   if ! curl -fsSL -o "${tmp}" "${api_url}" 2>/dev/null; then
     error "Failed to fetch latest release info from GitHub."
@@ -137,23 +135,21 @@ fetch_latest_release() {
   if [[ -z "${DOWNLOAD_URL}" ]]; then
     error "Could not find asset '${ASSET_NAME}' in latest release ${TAG_NAME}."
   fi
-
-  rm -f "${tmp}"
 }
 
 install() {
-    check_conflict
-    detect_platform
-    fetch_latest_release
-    ensure_install_dir
+  check_conflict
+  detect_platform
+  fetch_latest_release
+  ensure_install_dir
 
   local target="${INSTALL_DIR}/${BINARY_NAME}"
   local tmp_file
   tmp_file="$(mktemp)"
+  TEMP_FILES+=("${tmp_file}")
 
   info "Downloading Gluon ${TAG_NAME} for ${PLATFORM}..."
   if ! curl -fSL --progress-bar -o "${tmp_file}" "${DOWNLOAD_URL}"; then
-    rm -f "${tmp_file}"
     error "Download failed."
   fi
 
@@ -175,4 +171,3 @@ if [[ "${UNINSTALL}" == true ]]; then
 else
   install
 fi
-

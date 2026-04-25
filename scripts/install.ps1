@@ -11,18 +11,7 @@ $Repo = "funny233-github/MCLauncher"
 $BinaryName = "gluon"
 $InstallDir = Join-Path $env:LOCALAPPDATA "Programs" "Gluon"
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ConfFile = Join-Path $ScriptDir "install.conf"
 
-if (Test-Path $ConfFile) {
-    Get-Content $ConfFile | Where-Object { $_ -match "^[A-Z_]+=" } | ForEach-Object {
-        $key, $value = $_ -split "=", 2
-        switch ($key) {
-            "REPO"        { $Repo = $value }
-            "BINARY_NAME" { $BinaryName = $value }
-        }
-    }
-}
 
 if ($Help) {
     Write-Host @"
