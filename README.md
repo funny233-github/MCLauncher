@@ -26,6 +26,15 @@ To get started with Gluon, follow these steps:
 
 ### Installation
 
+**Using install scripts (recommended):**
+
+| Platform | Command |
+|----------|---------|
+| Linux / macOS | `curl -fsSL https://raw.githubusercontent.com/funny233-github/MCLauncher/main/scripts/install.sh \| bash` |
+| Windows (PowerShell) | `iwr -useb https://raw.githubusercontent.com/funny233-github/MCLauncher/main/scripts/install.ps1 \| iex` |
+
+To uninstall, append `--uninstall` (Linux/macOS) or `-Uninstall` (Windows).
+
 **From source:**
 
 ```bash
