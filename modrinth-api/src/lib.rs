@@ -416,8 +416,7 @@ impl Projects {
         }
 
         Err(anyhow::anyhow!(
-            "modrinth Projects fetch timeout!\ndetail:{:#?}",
-            &err_detail
+            "modrinth Projects fetch timeout!\ndetail:{err_detail:#?}",
         ))
     }
 
@@ -474,8 +473,7 @@ impl Projects {
         }
 
         Err(anyhow::anyhow!(
-            "modrinth Projects fetch timeout!\ndetail:{:#?}",
-            &err_detail
+            "modrinth Projects fetch timeout!\ndetail:{err_detail:#?}",
         ))
     }
 }

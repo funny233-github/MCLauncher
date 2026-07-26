@@ -248,13 +248,13 @@ fn handle_args() -> anyhow::Result<()> {
             }
 
             if let Some(version) = version {
-                println!("Set version to {}", &version);
+                println!("Set version to {version}");
                 version.clone_into(&mut handle.config_mut().vanilla);
                 handle.config_mut().game_version = version;
             }
             let game_version = handle.config().game_version.clone();
             if let Some(fabric) = fabric {
-                println!("Set loader to {}", &fabric);
+                println!("Set loader to {fabric}");
                 handle.config_mut().loader = MCLoader::Fabric(fabric.clone());
 
                 handle.config_mut().game_version = format!("{game_version}-fabric-{fabric}");

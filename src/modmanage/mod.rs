@@ -188,7 +188,7 @@ pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
 
-    println!("mod {} removed", &name);
+    println!("mod {name} removed");
     Ok(())
 }
 
@@ -256,7 +256,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
                         .clone()
                         .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {name}"))?,
                 ),
-                message: format!("Mod {} installed", &save_file.display()),
+                message: format!("Mod {} installed", save_file.display()),
                 save_file,
             })
         })
@@ -389,35 +389,21 @@ impl SyncUpdateHandle {
     /// Renames a disabled mod file back to its original name.
     ///
     /// Removes the `.unuse` suffix from the mod file if it exists, enabling the mod
-    /// for use in the game. The function checks both locked and regular configurations
-    /// to determine the correct original filename.
+    /// for use in the game. Uses `config.toml` to determine the correct original filename.
+    /// If the mod is not configured or has no local file name, the function does nothing.
     ///
     /// # Errors
     /// - `anyhow::Error` if filesystem rename operation fails
     fn rename_unuse_mod(&self) -> Result<()> {
         let handle = &self.handle_share.read().unwrap();
-        let locked_config_mods = handle.locked_config().mods.as_ref();
         let config_mods = handle.config().mods.as_ref();
-        let file_name;
-        if let Some(locked_config_mods) = locked_config_mods {
-            file_name = locked_config_mods
-                .get(&self.name)
-                .unwrap()
-                .file_name
-                .clone();
-        } else if let Some(config_mods) = config_mods {
-            if let Some(name) = config_mods
-                .get(&self.name)
-                .cloned()
-                .and_then(|x| x.file_name)
-            {
-                file_name = name;
-            } else {
-                return Ok(());
-            }
-        } else {
-            return Ok(());
-        }
+        let file_name = match config_mods.and_then(|mods| mods.get(&self.name)) {
+            Some(mod_conf) => match &mod_conf.file_name {
+                Some(name) => name.clone(),
+                None => return Ok(()),
+            },
+            None => return Ok(()),
+        };
         let unuse_file_name = format!("{file_name}.unuse");
         let game_dir = &handle.get_absolute_game_dir()?;
         let file_path = Path::new(game_dir).join("mods").join(&unuse_file_name);
