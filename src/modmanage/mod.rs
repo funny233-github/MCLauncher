@@ -188,7 +188,7 @@ pub fn remove(name: &str) -> Result<()> {
     let mut config_handler = ConfigHandler::read()?;
     config_handler.remove_mod(name)?;
 
-    println!("mod {} removed", &name);
+    println!("mod {name} removed");
     Ok(())
 }
 
@@ -256,7 +256,7 @@ fn mod_installtasks(handle: &ConfigHandler) -> Result<VecDeque<InstallTask>> {
                         .clone()
                         .ok_or_else(|| anyhow::anyhow!("Missing SHA1 for mod {name}"))?,
                 ),
-                message: format!("Mod {} installed", &save_file.display()),
+                message: format!("Mod {} installed", save_file.display()),
                 save_file,
             })
         })
