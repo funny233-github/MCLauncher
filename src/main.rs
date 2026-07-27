@@ -62,6 +62,10 @@ enum ListSub {
 
         #[arg(long, default_value_t = 60)]
         limit: usize,
+
+        /// Output as JSON
+        #[arg(long, global = true)]
+        json: bool,
     },
     Loader {
         #[command(subcommand)]
@@ -69,6 +73,10 @@ enum ListSub {
 
         #[arg(long, default_value_t = 60)]
         limit: usize,
+
+        /// Output as JSON
+        #[arg(long, global = true)]
+        json: bool,
     },
 }
 
@@ -120,6 +128,10 @@ enum ModManage {
 
         #[arg(long)]
         limit: Option<usize>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
     },
     Clean,
 }
@@ -185,16 +197,36 @@ fn handle_args() -> anyhow::Result<()> {
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
             match sub {
-                ListSub::MC { mc, limit } => {
+                ListSub::MC { mc, limit, json } => {
                     let list = VersionManifest::fetch(&handle.config().mirror.version_manifest)?
                         .list(&mc.into());
-                    print_version_list("Minecraft", &list, limit);
+                    if json {
+                        let json = serde_json::json!({
+                            "name": "Minecraft",
+                            "count": list.len(),
+                            "display_count": limit.min(list.len()),
+                            "versions": list.iter().take(limit).collect::<Vec<_>>(),
+                        });
+                        println!("{json}");
+                    } else {
+                        print_version_list("Minecraft", &list, limit);
+                    }
                 }
-                ListSub::Loader { loader, limit } => match loader {
+                ListSub::Loader { loader, limit, json } => match loader {
                     Loaders::Fabric => {
                         let l = fabric::Loader::fetch(&handle.config().mirror.fabric_meta)?;
                         let list: Vec<String> = l.iter().map(|x| x.version.clone()).collect();
-                        print_version_list("fabric loader", &list, limit);
+                        if json {
+                            let json = serde_json::json!({
+                                "name": "fabric loader",
+                                "count": list.len(),
+                                "display_count": limit.min(list.len()),
+                                "versions": list.iter().take(limit).collect::<Vec<_>>(),
+                            });
+                            println!("{json}");
+                        } else {
+                            print_version_list("fabric loader", &list, limit);
+                        }
                     }
                     Loaders::Neoforge => {
                         let l = neoforge::Loader::fetch(&handle.config().mirror.neoforge_neoforge)?;
@@ -214,14 +246,41 @@ fn handle_args() -> anyhow::Result<()> {
                                     }
                                 })
                                 .collect();
-                            print_version_list("neoforge loader", &list, limit);
+                            if json {
+                                let json = serde_json::json!({
+                                    "name": "neoforge loader",
+                                    "count": list.len(),
+                                    "display_count": limit.min(list.len()),
+                                    "versions": list.iter().take(limit).collect::<Vec<_>>(),
+                                });
+                                println!("{json}");
+                            } else {
+                                print_version_list("neoforge loader", &list, limit);
+                            }
                         } else {
                             // No MC version set, show table grouped by MC version
                             let manifest =
                                 VersionManifest::fetch(&handle.config().mirror.version_manifest)?;
                             let mc_releases =
                                 manifest.list(&mc_api::official::VersionType::Release);
-                            print_neoforge_table(&neoforge_versions, &mc_releases);
+                            if json {
+                                let neoforge_groups =
+                                    neoforge::group_by_mc_version(&neoforge_versions, &mc_releases);
+                                let json = serde_json::json!({
+                                    "mc_versions": mc_releases.iter().filter_map(|mc_ver| {
+                                        neoforge_groups.get(mc_ver).map(|neoforge_list| {
+                                            serde_json::json!({
+                                                "mc_version": mc_ver,
+                                                "latest": neoforge_list.first(),
+                                                "total": neoforge_list.len(),
+                                            })
+                                        })
+                                    }).collect::<Vec<_>>()
+                                });
+                                println!("{json}");
+                            } else {
+                                print_neoforge_table(&neoforge_versions, &mc_releases);
+                            }
                         }
                     }
                 },
@@ -295,7 +354,7 @@ fn handle_args() -> anyhow::Result<()> {
             ModManage::Update { config_only } => modmanage::update(config_only)?,
             ModManage::Install => modmanage::install()?,
             ModManage::Sync { config_only } => modmanage::sync(config_only)?,
-            ModManage::Search { name, limit } => modmanage::search(&name, limit)?,
+            ModManage::Search { name, limit, json } => modmanage::search(&name, limit, json)?,
             ModManage::Clean => modmanage::clean()?,
         },
     }
