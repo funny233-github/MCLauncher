@@ -13,6 +13,7 @@ use futures::TryStreamExt;
 use indicatif::{ProgressBar, ProgressStyle};
 use installer::{InstallTask, TaskPool};
 use modrinth_api::{Projects, Version, Versions};
+use serde::Serialize;
 use std::{
     collections::VecDeque,
     fs,
@@ -659,7 +660,7 @@ pub fn clean() -> Result<()> {
 
 /// Structure for displaying mod search results in a table.
 /// Information about a mod search result for display in tables.
-#[derive(Debug, Tabled)]
+#[derive(Debug, Serialize, Tabled)]
 struct HitsInfo {
     /// Unique identifier (slug) of the mod on Modrinth.
     slug: String,
@@ -699,7 +700,7 @@ struct HitsInfo {
 /// - `anyhow::Error` if no loader is configured in config.toml
 /// - `anyhow::Error` if response cannot be parsed
 #[tokio::main(flavor = "current_thread")]
-pub async fn search(name: &str, limit: Option<usize>) -> Result<()> {
+pub async fn search(name: &str, limit: Option<usize>, json: bool) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
     let loader = match handle.config().loader {
@@ -737,16 +738,20 @@ pub async fn search(name: &str, limit: Option<usize>) -> Result<()> {
         .flatten()
         .collect();
 
-    match res.len() {
-        0 => println!("No match mods found!"),
-        1..=10 => {
-            let mut table = Table::new(res);
-            println!("{}", table.with(Style::modern()));
-        }
-        _ => {
-            let mut table = Table::new(res);
-            println!("{}", table.with(Style::modern()));
-            println!("use --limit N to see more");
+    if json {
+        println!("{}", serde_json::to_string_pretty(&res)?);
+    } else {
+        match res.len() {
+            0 => println!("No match mods found!"),
+            1..=10 => {
+                let mut table = Table::new(res);
+                println!("{}", table.with(Style::modern()));
+            }
+            _ => {
+                let mut table = Table::new(res);
+                println!("{}", table.with(Style::modern()));
+                println!("use --limit N to see more");
+            }
         }
     }
     Ok(())
