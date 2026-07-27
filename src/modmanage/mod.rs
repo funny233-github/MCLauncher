@@ -689,12 +689,17 @@ struct HitsInfo {
 /// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```
 ///
+/// # Panics
+///
+/// Panics if writing to stdout fails (e.g., broken pipe) or if table formatting fails.
+///
 /// # Errors
 /// - `anyhow::Error` if configuration cannot be read
 /// - `anyhow::Error` if network request to Modrinth fails
 /// - `anyhow::Error` if no loader is configured in config.toml
 /// - `anyhow::Error` if response cannot be parsed
-pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+pub async fn search(name: &str, limit: Option<usize>) -> Result<()> {
     let handle = ConfigHandler::read()?;
 
     let loader = match handle.config().loader {
@@ -703,36 +708,34 @@ pub fn search(name: &str, limit: Option<usize>) -> Result<()> {
         MCLoader::None => return Err(anyhow::anyhow!("config.toml not have loader")),
     };
 
-    let game_version = handle.config().vanilla.as_ref();
+    let game_version = handle.config().vanilla.clone();
+    let projects = Projects::fetch(name, limit).await?;
 
-    let projects = Projects::fetch_blocking(name, limit)?;
-
-    let res: Result<Vec<_>> = projects
-        .hits
-        .iter()
-        .filter_map(|hit| {
-            let project_slug = hit.slug.as_ref();
-            let project_version = Versions::fetch_blocking(project_slug);
-            match project_version {
-                Ok(versions) => {
-                    let is_support_mod = hit.is_mod()
-                        && versions.into_iter().any(|v| {
-                            v.is_support_loader(loader) && v.is_support_game_version(game_version)
-                        });
-                    if is_support_mod {
-                        Some(Ok(HitsInfo {
-                            slug: hit.slug.clone(),
-                            description: hit.description.clone(),
-                        }))
-                    } else {
-                        None
-                    }
+    let res: Vec<HitsInfo> = stream::iter(projects.hits)
+        .map(|hit| {
+            let game_version = game_version.clone();
+            async move {
+                let versions = Versions::fetch(&hit.slug).await?;
+                let is_support_mod = hit.is_mod()
+                    && versions.into_iter().any(|v| {
+                        v.is_support_loader(loader) && v.is_support_game_version(&game_version)
+                    });
+                if is_support_mod {
+                    Ok::<_, anyhow::Error>(Some(HitsInfo {
+                        slug: hit.slug,
+                        description: hit.description,
+                    }))
+                } else {
+                    Ok(None)
                 }
-                Err(e) => Some(Err(e)),
             }
         })
+        .buffer_unordered(10)
+        .try_collect::<Vec<_>>()
+        .await?
+        .into_iter()
+        .flatten()
         .collect();
-    let res = res?;
 
     match res.len() {
         0 => println!("No match mods found!"),
