@@ -191,8 +191,11 @@ fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.command {
         Command::Init => {
-            ConfigHandler::init()?;
-            println!("Initialized empty game directory");
+            if ConfigHandler::init()? {
+                println!("Initialized empty game directory");
+            } else {
+                println!("config.toml already exists, skip init");
+            }
         }
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
