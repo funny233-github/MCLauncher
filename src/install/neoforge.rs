@@ -106,7 +106,7 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     if !manifest.versions.iter().any(|x| x.id == config.vanilla) {
         return Err(anyhow::anyhow!(
             "Cannot find the minecraft version {}",
-            config.game_version
+            config.vanilla
         ));
     }
     println!("fetching version...");
