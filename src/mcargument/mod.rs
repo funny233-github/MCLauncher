@@ -121,7 +121,7 @@ impl ConfigHandler {
     /// Combines base JVM settings (memory settings, GC, security flags), version-specific JVM
     /// arguments from manifest, the main class specification, and version-specific game arguments
     /// with authentication data. Base JVM arguments include -Xmx{`max_memory_size`}m for maximum
-    /// heap, -Xmn256m for minimum heap, -XX:+UseG1GC for G1 garbage collector, and several
+    /// heap, -Xmn256m for young generation size, -XX:+UseG1GC for G1 garbage collector, and several
     /// compatibility flags for Forge and Log4j security. Returns a vector of strings representing
     /// the complete command line for launching Minecraft.
     ///
