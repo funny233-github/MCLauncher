@@ -190,6 +190,63 @@ impl MinecraftAuthenticator {
             profile,
         })
     }
+
+    /// Refreshes the Microsoft access token using a refresh token.
+    ///
+    /// Exchanges the refresh token for a new access token and a new refresh
+    /// token (token rotation: the old refresh token becomes invalid). The
+    /// returned `TokenState` can be chained with `request_xbox_token`,
+    /// `request_xsts_token` and `request_minecraft_token` to obtain a fresh
+    /// Minecraft token.
+    ///
+    /// Uses a short timeout (10 seconds) so callers can degrade gracefully
+    /// when offline instead of blocking for a long time.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use mc_oauth::MinecraftAuthenticator;
+    ///
+    /// let authenticator = MinecraftAuthenticator::new("your_client_id");
+    /// let _ = authenticator.refresh("your_refresh_token");
+    /// ```
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Network request to Microsoft's token endpoint fails
+    /// - The refresh token is invalid, expired or revoked
+    /// - The response cannot be parsed
+    pub fn refresh(&self, refresh_token: &str) -> Result<TokenState> {
+        let param = json!({
+            "client_id": self.client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "scope": "XboxLive.signin offline_access"
+        });
+        let client = reqwest::blocking::Client::new();
+        let res = client
+            .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+            .form(&param)
+            .timeout(Duration::from_secs(10))
+            .send()?;
+
+        trace!("refresh token response: {res:#?}");
+        if !res.status().is_success() {
+            let status = res.status();
+            let error_text = res.text()?;
+            if let Ok(error_response) = serde_json::from_str::<TokenErrorResponse>(&error_text) {
+                let description = error_response.error_description.unwrap_or_default();
+                return Err(anyhow!(
+                    "Token refresh failed: {} - {description}",
+                    error_response.error
+                ));
+            }
+            return Err(anyhow!("Token refresh failed: {status} - {error_text}"));
+        }
+
+        Ok(TokenState {
+            token_data: res.json::<TokenResponse>()?,
+        })
+    }
 }
 
 impl MinecraftAuthenticator {
@@ -353,7 +410,6 @@ pub struct TokenResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct TokenErrorResponse {
     error: String,
-    #[allow(dead_code)]
     error_description: Option<String>,
 }
 
