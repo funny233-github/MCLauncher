@@ -135,8 +135,8 @@ pub fn fetch_version_blocking(
 /// // Add a specific version from Modrinth without installing
 /// add("fabric-api", Some(&"0.92.0".to_string()), false, true)?;
 ///
-/// // Add a local mod file
-/// add("/path/to/mod.jar", None, true, false)?;
+/// // Add a local mod file (the file must be placed in the mods directory first)
+/// add("mod.jar", None, true, false)?;
 ///
 /// # Ok::<(),Box<dyn std::error::Error>>(())
 /// ```

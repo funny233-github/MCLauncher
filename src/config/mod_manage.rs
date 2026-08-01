@@ -47,11 +47,19 @@ impl ConfigHandler {
 
     /// Adds a local mod to the configuration.
     ///
-    /// The mod file must exist in the game's mods directory.
+    /// The mod file must exist in the game's mods directory. The name must be
+    /// a plain file name, not a path.
     ///
     /// # Errors
+    /// - `anyhow::Error` if the name contains path separators
     /// - `anyhow::Error` if the mod file does not exist
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
+        if name.contains('/') || name.contains('\\') {
+            return Err(anyhow::anyhow!(
+                "local mod name must be a file name, not a path: '{name}'. \
+                 The file must be placed in the mods directory"
+            ));
+        }
         let path = Path::new(&self.get_absolute_game_dir()?)
             .join("mods")
             .join(name);
