@@ -231,6 +231,13 @@ impl ConfigHandler {
     /// Returns `true` if initialization was actually performed, `false` if
     /// configuration already exists and was skipped.
     ///
+    /// # Example
+    /// ```no_run
+    /// use gluon::config::ConfigHandler;
+    ///
+    /// let initialized = ConfigHandler::init().unwrap();
+    /// ```
+    ///
     /// # Errors
     /// - `anyhow::Error` if the configuration files cannot be written.
     pub fn init() -> Result<bool> {
@@ -245,6 +252,13 @@ impl ConfigHandler {
     ///
     /// Returns `true` if initialization was actually performed, `false` if
     /// configuration already exists and was skipped.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use gluon::config::{ConfigHandler, ConfigPaths};
+    ///
+    /// let initialized = ConfigHandler::init_for_paths(ConfigPaths::default()).unwrap();
+    /// ```
     ///
     /// # Errors
     /// - `anyhow::Error` if the configuration files cannot be written.
