@@ -2,10 +2,6 @@
 
 A modern, efficient Minecraft gluon written in Rust. This tool provides a command-line interface to launch and manage different versions of Minecraft with support for mod installation, Microsoft OAuth authentication, and more.
 
-## Version
-
-Current version: **0.8.3**
-
 ## Introduction
 
 Welcome to Gluon! This tool is designed to make it easy to launch and manage different versions of Minecraft. With just a few commands, you can create and manage Minecraft directories, set up configurations, download and install different versions of Minecraft, authenticate with Microsoft accounts, and install additional mods from Modrinth.
@@ -43,25 +39,18 @@ cd Gluon
 cargo install --path .
 ```
 
-**Using cargo:**
-
-```bash
-cargo install gluon
-```
-
 ### Basic Setup
 
 1. **Create a New Directory**: Initialize a new directory to store Minecraft files using the `gluon init` command.
-2. **Set Up Configurations**: Run `gluon config` within the directory to set up configurations.
-3. **Authenticate with Your Account**:
+2. **Authenticate with Your Account**:
    - For Microsoft accounts: `gluon account microsoft`
-4. **Explore Available Versions**: Explore available versions using `gluon list <version_type>`.
-5. **Select a Mirror**: Specify a download mirror via `gluon mirror <mirror>`.
-6. **Install Minecraft**: Install a specific version of Minecraft using the `gluon install <version>` command.
-7. **Install with Fabric Loader**: Install Minecraft along with the Fabric Loader using the `gluon install <version> --fabric <fabric_loader_version>` command.
-8. **Install with NeoForge Loader**: Install Minecraft along with the NeoForge Loader using the `gluon install <version> --neoforge <neoforge_version>` command.
-9. **Run Minecraft**: Launch the game with `gluon run`
-10. **Access Help**: For more commands and details, type `gluon help`.
+3. **Explore Available Versions**: Explore available versions using `gluon list <version_type>`.
+4. **Select a Mirror**: Specify a download mirror via `gluon mirror <mirror>`.
+5. **Install Minecraft**: Install a specific version of Minecraft using the `gluon install <version>` command.
+6. **Install with Fabric Loader**: Install Minecraft along with the Fabric Loader using the `gluon install <version> --fabric <fabric_loader_version>` command.
+7. **Install with NeoForge Loader**: Install Minecraft along with the NeoForge Loader using the `gluon install <version> --neoforge <neoforge_version>` command.
+8. **Run Minecraft**: Launch the game with `gluon run`
+9. **Access Help**: For more commands and details, type `gluon help`.
 
 ### Microsoft OAuth Authentication
 
