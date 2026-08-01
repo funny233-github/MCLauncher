@@ -84,6 +84,8 @@ enum ListSub {
 enum Account {
     Offline { name: String },
     Microsoft,
+    /// Refresh the stored Microsoft account tokens
+    Refresh,
 }
 
 #[derive(Subcommand, Debug)]
@@ -296,6 +298,7 @@ fn handle_args() -> anyhow::Result<()> {
                     handle.add_offline_account(&name);
                 }
                 Account::Microsoft => handle.add_microsoft_account()?,
+                Account::Refresh => handle.refresh_account()?,
             }
         }
         Command::Install {
