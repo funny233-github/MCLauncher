@@ -5,7 +5,7 @@
 //! paths, user authentication, and game configuration.
 
 use crate::config::ConfigHandler;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use mc_api::official::Version;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -279,7 +279,12 @@ impl ConfigHandler {
             .join("versions")
             .join(&self.config().game_version)
             .join(self.config().game_version.clone() + ".json");
-        let jsfile = fs::read_to_string(jsfile_path)?;
+        let jsfile = fs::read_to_string(&jsfile_path).with_context(|| {
+            format!(
+                "version JSON not found at '{}', run 'gluon install' first",
+                jsfile_path.display()
+            )
+        })?;
         Ok(serde_json::from_str(&jsfile)?)
     }
 }
