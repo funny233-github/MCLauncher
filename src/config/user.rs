@@ -5,6 +5,7 @@
 
 use mc_oauth::MinecraftAuthenticator;
 use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
 use uuid::Uuid;
 
 /// User account information for authentication.
@@ -21,6 +22,10 @@ pub struct UserAccount {
     pub user_uuid: String,
     /// Access token for Microsoft accounts.
     pub access_token: Option<String>,
+    /// Microsoft refresh token for token refresh (rotation); only present for Microsoft accounts.
+    pub refresh_token: Option<String>,
+    /// Unix timestamp (seconds) when the access token expires; only present for Microsoft accounts.
+    pub token_expires_at: Option<u64>,
 }
 
 impl Default for UserAccount {
@@ -31,6 +36,8 @@ impl Default for UserAccount {
             user_type: "offline".to_owned(),
             user_uuid: Uuid::new_v4().to_string(),
             access_token: None,
+            refresh_token: None,
+            token_expires_at: None,
         }
     }
 }
@@ -52,6 +59,8 @@ impl UserAccount {
             user_type: "offline".to_owned(),
             user_uuid: Uuid::new_v4().to_string(),
             access_token: None,
+            refresh_token: None,
+            token_expires_at: None,
         }
     }
 
@@ -94,6 +103,14 @@ impl UserAccount {
             user_type: "msa".into(),
             user_uuid: profile.id,
             access_token: minecraft_state.minecraft_token_data.access_token.into(),
+            refresh_token: Some(token_state.token_data.refresh_token.clone()),
+            token_expires_at: Some(
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .map_err(|e| anyhow::anyhow!("system time before unix epoch: {e}"))?
+                    .as_secs()
+                    + u64::from(minecraft_state.minecraft_token_data.expires_in),
+            ),
         })
     }
 }

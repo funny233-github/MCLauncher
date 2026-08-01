@@ -106,7 +106,7 @@ fn fetch_version(config: &RuntimeConfig) -> Result<Version> {
     if !manifest.versions.iter().any(|x| x.id == config.vanilla) {
         return Err(anyhow::anyhow!(
             "Cannot find the minecraft version {}",
-            config.game_version
+            config.vanilla
         ));
     }
     println!("fetching version...");
@@ -284,6 +284,15 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
             continue;
         }
 
+        if process.args.len() % 2 != 0 {
+            return Err(anyhow::anyhow!(
+                "invalid NeoForge install profile: processor '{}' has an odd number of args ({}), \
+                 expected key-value pairs",
+                process.jar,
+                process.args.len()
+            ));
+        }
+
         let mut args: Vec<String> = Vec::new();
         for (name, value) in process.args.chunks(2).map(|x| (x[0].clone(), x[1].clone())) {
             let mut value = value;
@@ -326,7 +335,13 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
         let stderr_handle = thread::spawn(move || io::copy(&mut stderr, &mut io::stderr()));
         io::copy(&mut stdout, &mut io::stdout())?;
         stderr_handle.join().unwrap()?;
-        command.wait()?;
+        let status = command.wait()?;
+        if !status.success() {
+            return Err(anyhow::anyhow!(
+                "NeoForge processor '{jar}' failed: {status}",
+                jar = process.jar
+            ));
+        }
     }
     Ok(())
 }

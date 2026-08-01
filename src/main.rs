@@ -34,7 +34,7 @@ enum Command {
         version: Option<String>,
 
         /// Install fabric loader
-        #[arg(long)]
+        #[arg(long, conflicts_with = "neoforge")]
         fabric: Option<String>,
 
         /// Install neoforge loader
@@ -84,6 +84,8 @@ enum ListSub {
 enum Account {
     Offline { name: String },
     Microsoft,
+    /// Refresh the stored Microsoft account tokens
+    Refresh,
 }
 
 #[derive(Subcommand, Debug)]
@@ -191,8 +193,11 @@ fn handle_args() -> anyhow::Result<()> {
     let args = Args::parse();
     match args.command {
         Command::Init => {
-            ConfigHandler::init()?;
-            println!("Initialized empty game directory");
+            if ConfigHandler::init()? {
+                println!("Initialized empty game directory");
+            } else {
+                println!("config.toml already exists, skip init");
+            }
         }
         Command::List(sub) => {
             let handle = ConfigHandler::read()?;
@@ -293,6 +298,7 @@ fn handle_args() -> anyhow::Result<()> {
                     handle.add_offline_account(&name);
                 }
                 Account::Microsoft => handle.add_microsoft_account()?,
+                Account::Refresh => handle.refresh_account()?,
             }
         }
         Command::Install {
@@ -301,7 +307,16 @@ fn handle_args() -> anyhow::Result<()> {
             neoforge,
         } => {
             let mut handle = ConfigHandler::read()?;
-            if version.is_none() && fabric.is_none() {
+            // Loader options must be given together with a version argument;
+            // installing a loader without a version is undefined behavior
+            // (the game_version suffix would be stacked on re-install).
+            if version.is_none() && (fabric.is_some() || neoforge.is_some()) {
+                return Err(anyhow::anyhow!(
+                    "loader options (--fabric/--neoforge) require a version argument, \
+                     e.g. 'gluon install 1.21.1 --fabric 0.16.1'"
+                ));
+            }
+            if version.is_none() && fabric.is_none() && neoforge.is_none() {
                 install_mc(&handle)?;
                 return Ok(());
             }
@@ -327,7 +342,8 @@ fn handle_args() -> anyhow::Result<()> {
             install_mc(&ConfigHandler::read()?)?;
         }
         Command::Run => {
-            let config = ConfigHandler::read()?;
+            let mut config = ConfigHandler::read()?;
+            config.ensure_valid_token()?;
             gameruntime(&config)?;
         }
         Command::Mirror(mirror) => {

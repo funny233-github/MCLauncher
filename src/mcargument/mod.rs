@@ -5,7 +5,7 @@
 //! paths, user authentication, and game configuration.
 
 use crate::config::ConfigHandler;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use mc_api::official::Version;
 use regex::Regex;
 use std::{collections::HashMap, fs, path::Path};
@@ -121,7 +121,7 @@ impl ConfigHandler {
     /// Combines base JVM settings (memory settings, GC, security flags), version-specific JVM
     /// arguments from manifest, the main class specification, and version-specific game arguments
     /// with authentication data. Base JVM arguments include -Xmx{`max_memory_size`}m for maximum
-    /// heap, -Xmn256m for minimum heap, -XX:+UseG1GC for G1 garbage collector, and several
+    /// heap, -Xmn256m for young generation size, -XX:+UseG1GC for G1 garbage collector, and several
     /// compatibility flags for Forge and Log4j security. Returns a vector of strings representing
     /// the complete command line for launching Minecraft.
     ///
@@ -279,7 +279,12 @@ impl ConfigHandler {
             .join("versions")
             .join(&self.config().game_version)
             .join(self.config().game_version.clone() + ".json");
-        let jsfile = fs::read_to_string(jsfile_path)?;
+        let jsfile = fs::read_to_string(&jsfile_path).with_context(|| {
+            format!(
+                "version JSON not found at '{}', run 'gluon install' first",
+                jsfile_path.display()
+            )
+        })?;
         Ok(serde_json::from_str(&jsfile)?)
     }
 }

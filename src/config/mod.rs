@@ -224,23 +224,48 @@ impl ConfigHandler {
 
     /// Initializes the configuration handler with default paths.
     ///
-    /// Creates default configuration files if they don't exist.
+    /// Creates default configuration files if they don't exist. If `config.toml`
+    /// already exists (found by searching upward from the current directory),
+    /// initialization is skipped (idempotent).
+    ///
+    /// Returns `true` if initialization was actually performed, `false` if
+    /// configuration already exists and was skipped.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use gluon::config::ConfigHandler;
+    ///
+    /// let initialized = ConfigHandler::init().unwrap();
+    /// ```
     ///
     /// # Errors
     /// - `anyhow::Error` if the configuration files cannot be written.
-    pub fn init() -> Result<()> {
+    pub fn init() -> Result<bool> {
         ConfigHandler::init_for_paths(ConfigPaths::default())
     }
 
     /// Initializes the configuration handler with custom paths.
     ///
     /// Creates configuration files at the specified paths if they don't exist.
+    /// If `config.toml` already exists (found by searching upward from the
+    /// config file location), initialization is skipped (idempotent).
+    ///
+    /// Returns `true` if initialization was actually performed, `false` if
+    /// configuration already exists and was skipped.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use gluon::config::{ConfigHandler, ConfigPaths};
+    ///
+    /// let initialized = ConfigHandler::init_for_paths(ConfigPaths::default()).unwrap();
+    /// ```
     ///
     /// # Errors
-    /// - `anyhow::Error` if configuration files do not exist
-    /// - `anyhow::Error` if configuration files contain invalid TOML
-    /// - `anyhow::Error` if configuration validation fails
-    pub fn init_for_paths(paths: ConfigPaths) -> Result<()> {
+    /// - `anyhow::Error` if the configuration files cannot be written.
+    pub fn init_for_paths(paths: ConfigPaths) -> Result<bool> {
+        if path::try_find_config_root_from(Path::new(&paths.config)).is_some() {
+            return Ok(false);
+        }
         let handle = Self {
             config: Mac::new(RuntimeConfig::default()),
             locked_config: Mac::new(LockedConfig::default()),
@@ -248,7 +273,7 @@ impl ConfigHandler {
             paths,
         };
         handle.write_all()?;
-        Ok(())
+        Ok(true)
     }
 
     /// Reads configuration files by searching for config.toml upward from current directory.
@@ -263,7 +288,8 @@ impl ConfigHandler {
     /// - `anyhow::Error` if config.toml contains invalid TOML
     /// - `anyhow::Error` if configuration validation fails
     pub fn read() -> Result<Self> {
-        let root = Self::find_config_root()?;
+        let root = Self::try_find_config_root()
+            .ok_or_else(|| anyhow::anyhow!("config.toml not found, run 'gluon init' first"))?;
         let paths = ConfigPaths {
             config: root.join("config.toml").display().to_string(),
             locked_config: root.join("config.lock").display().to_string(),
@@ -296,14 +322,14 @@ impl ConfigHandler {
         }
         let config = Mac::new(config);
 
-        let locked_config = if fs::exists(&paths.locked_config).is_ok() {
+        let locked_config = if fs::exists(&paths.locked_config).is_ok_and(|x| x) {
             let data = fs::read_to_string(&paths.locked_config)?;
             Mac::new(toml::from_str(&data)?)
         } else {
             Mac::new(LockedConfig::default())
         };
 
-        let user_account = if fs::exists(&paths.user_account).is_ok() {
+        let user_account = if fs::exists(&paths.user_account).is_ok_and(|x| x) {
             Mac::new(toml::from_str(&fs::read_to_string(&paths.user_account)?)?)
         } else {
             Mac::new(UserAccount::default())

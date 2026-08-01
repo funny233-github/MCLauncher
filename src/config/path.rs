@@ -4,26 +4,35 @@ use super::ConfigHandler;
 use anyhow::{Context, Result};
 use std::path::Path;
 
+/// Searches upward for `config.toml` starting from the given path.
+///
+/// The given path may be a directory or a file. Returns the directory
+/// containing `config.toml`, or `None` if the filesystem root is reached
+/// without finding it.
+pub(super) fn try_find_config_root_from(path: &Path) -> Option<std::path::PathBuf> {
+    // Relative paths have no directory component to climb up from (e.g. "config.toml"
+    // pops to an empty path), so normalize to an absolute path first. `absolute` does
+    // not touch the filesystem and does not require the path to exist.
+    let mut current = std::path::absolute(path).ok()?;
+    loop {
+        if current.join("config.toml").exists() {
+            return Some(current);
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
 impl ConfigHandler {
     /// Searches upward for config.toml starting from the current directory.
     ///
-    /// Returns the directory containing config.toml, or an error if the
-    /// filesystem root is reached without finding it.
-    ///
-    /// # Errors
-    /// Returns an error if config.toml is not found before reaching the filesystem root.
-    pub(crate) fn find_config_root() -> Result<std::path::PathBuf> {
-        let mut current = std::env::current_dir()?;
-        loop {
-            let config_path = current.join("config.toml");
-            if config_path.exists() {
-                return Ok(current);
-            }
-            current = current
-                .parent()
-                .context("reached filesystem root without finding config.toml")?
-                .to_path_buf();
-        }
+    /// Returns the directory containing config.toml, or `None` if the current
+    /// directory cannot be determined or the filesystem root is reached
+    /// without finding it.
+    pub(crate) fn try_find_config_root() -> Option<std::path::PathBuf> {
+        let cwd = std::env::current_dir().ok()?;
+        try_find_config_root_from(&cwd)
     }
 
     /// Gets the absolute path to the game directory.

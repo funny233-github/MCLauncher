@@ -190,6 +190,63 @@ impl MinecraftAuthenticator {
             profile,
         })
     }
+
+    /// Refreshes the Microsoft access token using a refresh token.
+    ///
+    /// Exchanges the refresh token for a new access token and a new refresh
+    /// token (token rotation: the old refresh token becomes invalid). The
+    /// returned `TokenState` can be chained with `request_xbox_token`,
+    /// `request_xsts_token` and `request_minecraft_token` to obtain a fresh
+    /// Minecraft token.
+    ///
+    /// Uses a short timeout (10 seconds) so callers can degrade gracefully
+    /// when offline instead of blocking for a long time.
+    ///
+    /// # Example
+    /// ```no_run
+    /// use mc_oauth::MinecraftAuthenticator;
+    ///
+    /// let authenticator = MinecraftAuthenticator::new("your_client_id");
+    /// let _ = authenticator.refresh("your_refresh_token");
+    /// ```
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Network request to Microsoft's token endpoint fails
+    /// - The refresh token is invalid, expired or revoked
+    /// - The response cannot be parsed
+    pub fn refresh(&self, refresh_token: &str) -> Result<TokenState> {
+        let param = json!({
+            "client_id": self.client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "scope": "XboxLive.signin offline_access"
+        });
+        let client = reqwest::blocking::Client::new();
+        let res = client
+            .post("https://login.microsoftonline.com/consumers/oauth2/v2.0/token")
+            .form(&param)
+            .timeout(Duration::from_secs(10))
+            .send()?;
+
+        trace!("refresh token response: {res:#?}");
+        if !res.status().is_success() {
+            let status = res.status();
+            let error_text = res.text()?;
+            if let Ok(error_response) = serde_json::from_str::<TokenErrorResponse>(&error_text) {
+                let description = error_response.error_description.unwrap_or_default();
+                return Err(anyhow!(
+                    "Token refresh failed: {} - {description}",
+                    error_response.error
+                ));
+            }
+            return Err(anyhow!("Token refresh failed: {status} - {error_text}"));
+        }
+
+        Ok(TokenState {
+            token_data: res.json::<TokenResponse>()?,
+        })
+    }
 }
 
 impl MinecraftAuthenticator {
@@ -254,8 +311,8 @@ impl DeviceFlowState {
     /// waiting for the user to complete authentication on their device. Handles OAuth error states
     /// including pending authorization, declined authorization, and expired tokens.
     ///
-    /// Polls every 5 seconds (default interval) with a maximum of 30 attempts (approximately 2.5 minutes).
-    /// Returns immediately once authentication is complete.
+    /// Polls every `interval` seconds (default 5) until the device code's `expires_in` elapses
+    /// (typically 15 minutes). Returns immediately once authentication is complete.
     ///
     /// # Example
     /// ```no_run
@@ -275,14 +332,16 @@ impl DeviceFlowState {
     ///
     /// # Errors
     /// Returns an error if:
-    /// - User doesn't complete verification within the timeout period (30 polling attempts)
+    /// - User doesn't complete verification before the device code expires
     /// - User explicitly declines authorization
     /// - Device code expires before authentication completes
     /// - Network failures occur during polling
     /// - Invalid response from Microsoft's API
     pub fn wait_for_token(&self) -> Result<TokenState> {
         let client = reqwest::blocking::Client::new();
-        let max_attempts = 30; // Maximum number of polling attempts
+        // Poll until the device code itself expires (e.g. 900s / 5s = 180 attempts),
+        // instead of a hardcoded short limit.
+        let max_attempts = self.initial_response.expires_in / self.initial_response.interval;
         let mut attempts = 0;
 
         loop {
@@ -353,7 +412,6 @@ pub struct TokenResponse {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct TokenErrorResponse {
     error: String,
-    #[allow(dead_code)]
     error_description: Option<String>,
 }
 

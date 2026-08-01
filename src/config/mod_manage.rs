@@ -47,11 +47,19 @@ impl ConfigHandler {
 
     /// Adds a local mod to the configuration.
     ///
-    /// The mod file must exist in the game's mods directory.
+    /// The mod file must exist in the game's mods directory. The name must be
+    /// a plain file name, not a path.
     ///
     /// # Errors
+    /// - `anyhow::Error` if the name contains path separators
     /// - `anyhow::Error` if the mod file does not exist
     pub fn add_mod_local(&mut self, name: &str) -> Result<()> {
+        if name.contains('/') || name.contains('\\') {
+            return Err(anyhow::anyhow!(
+                "local mod name must be a file name, not a path: '{name}'. \
+                 The file must be placed in the mods directory"
+            ));
+        }
         let path = Path::new(&self.get_absolute_game_dir()?)
             .join("mods")
             .join(name);
@@ -180,11 +188,6 @@ impl ConfigHandler {
     /// - `anyhow::Error` if mods directory cannot be accessed
     /// - `anyhow::Error` if file renaming fails
     /// - `anyhow::Error` if file metadata cannot be read
-    #[allow(clippy::unnecessary_wraps, reason = "wraps is human readable")]
-    #[allow(
-        clippy::redundant_closure_for_method_calls,
-        reason = "wraps is human readable"
-    )]
     #[allow(
         clippy::case_sensitive_file_extension_comparisons,
         reason = "case_sensitive is need"
@@ -204,19 +207,27 @@ impl ConfigHandler {
             _ => Vec::new(),
         };
 
-        for entry in WalkDir::new(&mod_dir).into_iter().filter_map(|e| e.ok()) {
-            if let Some(name) = entry.file_name().to_str() {
-                // WalkDir returns the directory itself ("mods") as an entry, which we must filter out
-                // to avoid incorrectly processing the mods directory as a mod file
-                if name == "mods" || name.ends_with(".unuse") {
-                    continue;
-                }
+        for entry in WalkDir::new(&mod_dir) {
+            let entry =
+                entry.map_err(|e| anyhow::anyhow!("failed to read mods directory: {e}"))?;
+            let Some(name) = entry.file_name().to_str() else {
+                return Err(anyhow::anyhow!(
+                    "cannot process mod file '{}': the file name is not valid UTF-8 \
+                     (usually caused by a corrupted or mis-encoded name). \
+                     Rename or remove this file and run the command again",
+                    entry.path().display()
+                ));
+            };
+            // WalkDir returns the directory itself ("mods") as an entry, which we must filter out
+            // to avoid incorrectly processing the mods directory as a mod file
+            if name == "mods" || name.ends_with(".unuse") {
+                continue;
+            }
 
-                if !used_files.contains(&name.to_string()) {
-                    let path = mod_dir.join(name);
-                    let new_path = mod_dir.join(format!("{name}.unuse"));
-                    fs::rename(path, new_path)?;
-                }
+            if !used_files.contains(&name.to_string()) {
+                let path = mod_dir.join(name);
+                let new_path = mod_dir.join(format!("{name}.unuse"));
+                fs::rename(path, new_path)?;
             }
         }
         Ok(())
@@ -252,25 +263,24 @@ impl ConfigHandler {
             _ => Vec::new(),
         };
 
-        for entry in WalkDir::new(&mod_dir)
-            .into_iter()
-            .filter(|entry| match entry {
-                Ok(e) => e
-                    .file_name()
-                    .to_str()
-                    .unwrap_or_else(|| panic!("Failed to convert str to String"))
-                    .ends_with(".unuse"),
-                Err(e) => panic!("{}", e),
-            })
-        {
-            if let Some(name) = &entry?.file_name().to_str() {
-                if used_files.iter().any(|x| &format!("{x}.unuse") == name) {
-                    let path = mod_dir.join(name);
-                    let mut new_name = name.to_string();
-                    new_name.truncate(name.len() - 6);
-                    let new_path = mod_dir.join(new_name);
-                    fs::rename(path, new_path)?;
-                }
+        for entry in WalkDir::new(&mod_dir) {
+            let entry =
+                entry.map_err(|e| anyhow::anyhow!("failed to read mods directory: {e}"))?;
+            let Some(name) = entry.file_name().to_str() else {
+                return Err(anyhow::anyhow!(
+                    "cannot process mod file '{}': the file name is not valid UTF-8 \
+                     (usually caused by a corrupted or mis-encoded name). \
+                     Rename or remove this file and run the command again",
+                    entry.path().display()
+                ));
+            };
+            if name.ends_with(".unuse") && used_files.iter().any(|x| format!("{x}.unuse") == name)
+            {
+                let path = mod_dir.join(name);
+                let mut new_name = name.to_string();
+                new_name.truncate(name.len() - 6);
+                let new_path = mod_dir.join(new_name);
+                fs::rename(path, new_path)?;
             }
         }
         Ok(())
