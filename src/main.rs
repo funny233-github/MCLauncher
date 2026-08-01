@@ -333,7 +333,8 @@ fn handle_args() -> anyhow::Result<()> {
             install_mc(&ConfigHandler::read()?)?;
         }
         Command::Run => {
-            let config = ConfigHandler::read()?;
+            let mut config = ConfigHandler::read()?;
+            config.ensure_valid_token()?;
             gameruntime(&config)?;
         }
         Command::Mirror(mirror) => {
