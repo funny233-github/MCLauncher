@@ -34,7 +34,7 @@ enum Command {
         version: Option<String>,
 
         /// Install fabric loader
-        #[arg(long)]
+        #[arg(long, conflicts_with = "neoforge")]
         fabric: Option<String>,
 
         /// Install neoforge loader
