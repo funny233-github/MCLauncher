@@ -326,7 +326,13 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
         let stderr_handle = thread::spawn(move || io::copy(&mut stderr, &mut io::stderr()));
         io::copy(&mut stdout, &mut io::stdout())?;
         stderr_handle.join().unwrap()?;
-        command.wait()?;
+        let status = command.wait()?;
+        if !status.success() {
+            return Err(anyhow::anyhow!(
+                "NeoForge processor '{jar}' failed: {status}",
+                jar = process.jar
+            ));
+        }
     }
     Ok(())
 }
