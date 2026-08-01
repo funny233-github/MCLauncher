@@ -322,14 +322,14 @@ impl ConfigHandler {
         }
         let config = Mac::new(config);
 
-        let locked_config = if fs::exists(&paths.locked_config).is_ok() {
+        let locked_config = if fs::exists(&paths.locked_config).is_ok_and(|x| x) {
             let data = fs::read_to_string(&paths.locked_config)?;
             Mac::new(toml::from_str(&data)?)
         } else {
             Mac::new(LockedConfig::default())
         };
 
-        let user_account = if fs::exists(&paths.user_account).is_ok() {
+        let user_account = if fs::exists(&paths.user_account).is_ok_and(|x| x) {
             Mac::new(toml::from_str(&fs::read_to_string(&paths.user_account)?)?)
         } else {
             Mac::new(UserAccount::default())
