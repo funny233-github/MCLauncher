@@ -307,6 +307,15 @@ fn handle_args() -> anyhow::Result<()> {
             neoforge,
         } => {
             let mut handle = ConfigHandler::read()?;
+            // Loader options must be given together with a version argument;
+            // installing a loader without a version is undefined behavior
+            // (the game_version suffix would be stacked on re-install).
+            if version.is_none() && (fabric.is_some() || neoforge.is_some()) {
+                return Err(anyhow::anyhow!(
+                    "loader options (--fabric/--neoforge) require a version argument, \
+                     e.g. 'gluon install 1.21.1 --fabric 0.16.1'"
+                ));
+            }
             if version.is_none() && fabric.is_none() && neoforge.is_none() {
                 install_mc(&handle)?;
                 return Ok(());
