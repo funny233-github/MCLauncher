@@ -311,8 +311,8 @@ impl DeviceFlowState {
     /// waiting for the user to complete authentication on their device. Handles OAuth error states
     /// including pending authorization, declined authorization, and expired tokens.
     ///
-    /// Polls every 5 seconds (default interval) with a maximum of 30 attempts (approximately 2.5 minutes).
-    /// Returns immediately once authentication is complete.
+    /// Polls every `interval` seconds (default 5) until the device code's `expires_in` elapses
+    /// (typically 15 minutes). Returns immediately once authentication is complete.
     ///
     /// # Example
     /// ```no_run
@@ -332,14 +332,16 @@ impl DeviceFlowState {
     ///
     /// # Errors
     /// Returns an error if:
-    /// - User doesn't complete verification within the timeout period (30 polling attempts)
+    /// - User doesn't complete verification before the device code expires
     /// - User explicitly declines authorization
     /// - Device code expires before authentication completes
     /// - Network failures occur during polling
     /// - Invalid response from Microsoft's API
     pub fn wait_for_token(&self) -> Result<TokenState> {
         let client = reqwest::blocking::Client::new();
-        let max_attempts = 30; // Maximum number of polling attempts
+        // Poll until the device code itself expires (e.g. 900s / 5s = 180 attempts),
+        // instead of a hardcoded short limit.
+        let max_attempts = self.initial_response.expires_in / self.initial_response.interval;
         let mut attempts = 0;
 
         loop {
