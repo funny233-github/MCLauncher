@@ -307,7 +307,7 @@ fn handle_args() -> anyhow::Result<()> {
             neoforge,
         } => {
             let mut handle = ConfigHandler::read()?;
-            if version.is_none() && fabric.is_none() {
+            if version.is_none() && fabric.is_none() && neoforge.is_none() {
                 install_mc(&handle)?;
                 return Ok(());
             }
