@@ -284,6 +284,15 @@ fn process_processors(config: &ConfigHandler) -> Result<()> {
             continue;
         }
 
+        if process.args.len() % 2 != 0 {
+            return Err(anyhow::anyhow!(
+                "invalid NeoForge install profile: processor '{}' has an odd number of args ({}), \
+                 expected key-value pairs",
+                process.jar,
+                process.args.len()
+            ));
+        }
+
         let mut args: Vec<String> = Vec::new();
         for (name, value) in process.args.chunks(2).map(|x| (x[0].clone(), x[1].clone())) {
             let mut value = value;
